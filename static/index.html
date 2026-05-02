@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Istefadah Venue Booking</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="hero-panel">
+        <div class="brand-block">
+          <p class="eyebrow">Venue Scheduling Portal</p>
+          <h1>
+            <span>Istefadah</span>
+            <span>Venue</span>
+            <span>Booking</span>
+          </h1>
+        </div>
+
+      </aside>
+
+      <main class="app-panel">
+        <section id="loginView" class="card login-card">
+          <div class="section-head">
+            <div>
+              <p class="section-tag">Access</p>
+              <h2>Sign in</h2>
+            </div>
+          </div>
+          <form id="loginForm" class="grid-form">
+            <label>
+              Organisation email
+              <input id="email" type="email" placeholder="name@istefadah.org" required />
+            </label>
+            <label>
+              Password
+              <input id="password" type="password" placeholder="Enter password" required />
+            </label>
+            <button type="submit" class="primary-btn">Log in</button>
+          </form>
+          <p id="loginMessage" class="message"></p>
+        </section>
+
+        <section id="appView" class="hidden">
+          <div class="topbar card">
+            <div>
+              <p class="section-tag">Welcome</p>
+              <h2 id="welcomeText"></h2>
+            </div>
+            <div class="topbar-actions">
+              <span class="top-pill">Active <strong id="metricBookings"></strong></span>
+              <span class="top-pill">History <strong id="metricHistory"></strong></span>
+              <span class="top-pill">Logs <strong id="metricNotifications"></strong></span>
+              <button id="refreshBtn" class="secondary-btn">Refresh</button>
+              <button id="logoutBtn" class="ghost-btn">Logout</button>
+            </div>
+          </div>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <p class="section-tag">Create Booking</p>
+                <h2>Book a venue</h2>
+              </div>
+            </div>
+            <form id="bookingForm" class="grid-form booking-form">
+              <label class="half-field">
+                Booked by
+                <input id="bookedBy" type="text" required />
+              </label>
+              <label class="half-field">
+                Purpose
+                <input id="purpose" type="text" placeholder="Training, meeting, majlis..." required />
+              </label>
+              <label class="third-field">
+                Venue
+                <select id="venueId" required></select>
+              </label>
+              <fieldset class="third-field mode-fieldset">
+                <legend>Date selection</legend>
+                <div class="mode-switch">
+                  <label class="mini-option">
+                    <input type="radio" name="dateMode" value="single" checked />
+                    <span>One day</span>
+                  </label>
+                  <label class="mini-option">
+                    <input type="radio" name="dateMode" value="range" />
+                    <span>Continuous days</span>
+                  </label>
+                </div>
+              </fieldset>
+              <label id="singleDateWrap" class="third-field">
+                Select date
+                <input id="datePicker" type="date" />
+              </label>
+              <label id="rangeDateWrap" class="third-field hidden">
+                Select date range
+                <div class="range-inputs">
+                  <input id="rangeStartDate" type="date" />
+                  <input id="rangeEndDate" type="date" />
+                </div>
+              </label>
+              <label class="tiny-field">
+                Audience count
+                <input id="audienceCount" type="number" min="1" required />
+              </label>
+              <div class="date-selector-card wide-field">
+                <button id="addDateBtn" type="button" class="secondary-btn">Add selected date</button>
+                <button id="addRangeBtn" type="button" class="secondary-btn hidden">Add date range</button>
+                <button id="clearDatesBtn" type="button" class="ghost-btn">Clear dates</button>
+                <div id="selectedDates" class="selected-dates"></div>
+              </div>
+              <label class="half-field">
+                Hijri preview
+                <textarea id="hijriPreview" readonly></textarea>
+              </label>
+              <div class="half-field">
+                <div class="section-inline-head">
+                  <span>Time slots</span>
+                  <button id="clearSlotsBtn" type="button" class="ghost-btn small-btn">Clear selected slots</button>
+                </div>
+                <div id="timeSlotGrid" class="time-slot-grid"></div>
+              </div>
+              <fieldset class="half-field compact-options">
+                <legend>AVIT requirements</legend>
+                <div id="avitOptions" class="check-grid"></div>
+              </fieldset>
+              <fieldset class="half-field compact-options">
+                <legend>Sitting arrangements</legend>
+                <div id="sittingOptions" class="check-grid"></div>
+              </fieldset>
+              <button type="submit" class="primary-btn wide-btn">Submit booking</button>
+            </form>
+            <p id="bookingMessage" class="message"></p>
+          </section>
+
+          <section class="card print-report" id="activeBookingsSection">
+            <div class="section-head">
+              <div>
+                <p class="section-tag" id="tableTag">Active Bookings</p>
+                <h2 id="tableTitle">Current bookings</h2>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th><button type="button" class="sort-header" data-sort-field="date">Date <span id="sort-date">↕</span></button></th>
+                    <th><button type="button" class="sort-header" data-sort-field="time">Time <span id="sort-time">↕</span></button></th>
+                    <th><button type="button" class="sort-header" data-sort-field="venue">Venue <span id="sort-venue">↕</span></button></th>
+                    <th><button type="button" class="sort-header" data-sort-field="user">Booked By <span id="sort-user">↕</span></button></th>
+                    <th>Purpose</th>
+                    <th>Audience</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="activeBookingTableBody"></tbody>
+              </table>
+            </div>
+            <p id="tableMessage" class="message"></p>
+          </section>
+
+          <details class="card print-report" id="historySection">
+            <summary>Previous booking history</summary>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Venue</th>
+                    <th>Booked By</th>
+                    <th>Purpose</th>
+                    <th>Audience</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="historyBookingTableBody"></tbody>
+              </table>
+            </div>
+            <p id="historyMessage" class="message"></p>
+          </details>
+
+          <details class="card log-card">
+            <summary>Activity logs</summary>
+            <div id="notifications" class="notification-list log-list"></div>
+          </details>
+
+          <section id="adminSection" class="card hidden">
+            <div class="section-head">
+              <div>
+                <p class="section-tag">Admin Rights</p>
+                <h2>Post-48-hour permissions</h2>
+              </div>
+            </div>
+            <div id="adminUsers" class="admin-users"></div>
+          </section>
+
+          <details class="card export-menu">
+            <summary>Reports and exports</summary>
+            <div class="export-menu-list">
+              <button data-format="excel" class="secondary-btn export-btn">Download Excel</button>
+              <button data-format="word" class="secondary-btn export-btn">Download Word</button>
+              <button data-format="csv" class="secondary-btn export-btn">Download CSV</button>
+              <button id="printReportBtn" class="secondary-btn">Print Report</button>
+            </div>
+            <p class="hint">Print shows the bookings report only. Open history first if you want it included.</p>
+          </details>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
