@@ -18,19 +18,36 @@ HOST = os.getenv("ISTEFADAH_HOST", "0.0.0.0" if os.getenv("PORT") else "127.0.0.
 PORT = int(os.getenv("PORT") or os.getenv("ISTEFADAH_PORT", "8000"))
 
 TIME_SLOTS = [
-    "14:00-14:45",
-    "14:45-15:30",
-    "15:30-16:15",
-    "16:15-17:00",
-    "17:00-17:45",
-    "17:45-18:30",
-    "18:30-19:15",
-    "19:15-20:00",
-    "20:00-20:45",
-    "20:45-21:30",
-    "21:30-22:15",
-    "22:15-23:00",
-    "23:00-23:45",
+    "08:00-08:30",
+    "08:30-09:00",
+    "09:00-09:30",
+    "09:30-10:00",
+    "10:00-10:30",
+    "10:30-11:00",
+    "11:00-11:30",
+    "11:30-12:00",
+    "12:00-12:30",
+    "12:30-13:00",
+    "13:00-13:30",
+    "13:30-14:00",
+    "14:00-14:30",
+    "14:30-15:00",
+    "15:00-15:30",
+    "15:30-16:00",
+    "16:00-16:30",
+    "16:30-17:00",
+    "17:00-17:30",
+    "17:30-18:00",
+    "18:00-18:30",
+    "18:30-19:00",
+    "19:00-19:30",
+    "19:30-20:00",
+    "20:00-20:30",
+    "20:30-21:00",
+    "21:00-21:30",
+    "21:30-22:00",
+    "22:00-22:30",
+    "22:30-23:00",
 ]
 
 VENUES = [
@@ -95,7 +112,7 @@ def init_db() -> None:
                 audience_details TEXT,
                 avit_requirements TEXT,
                 sitting_arrangements TEXT,
-                status TEXT NOT NULL DEFAULT 'booked' CHECK(status IN ('booked', 'cancelled')),
+                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'cancelled')),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 updated_by_user_id INTEGER,
@@ -117,6 +134,59 @@ def init_db() -> None:
             ON bookings (booking_date, time_slot, venue_id, status);
             """
         )
+
+        booking_schema = conn.execute("PRAGMA table_info(bookings)").fetchall()
+        status_default = ""
+        for column in booking_schema:
+            if column["name"] == "status":
+                status_default = str(column["dflt_value"] or "")
+                break
+        if "'booked'" in status_default:
+            conn.executescript(
+                """
+                ALTER TABLE bookings RENAME TO bookings_old;
+
+                CREATE TABLE bookings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    booking_code TEXT NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    venue_id INTEGER NOT NULL,
+                    booking_date TEXT NOT NULL,
+                    time_slot TEXT NOT NULL,
+                    booked_by TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    audience_count INTEGER NOT NULL,
+                    audience_details TEXT,
+                    avit_requirements TEXT,
+                    sitting_arrangements TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'cancelled')),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    updated_by_user_id INTEGER,
+                    FOREIGN KEY(user_id) REFERENCES users(id),
+                    FOREIGN KEY(venue_id) REFERENCES venues(id),
+                    FOREIGN KEY(updated_by_user_id) REFERENCES users(id)
+                );
+
+                INSERT INTO bookings (
+                    id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
+                    purpose, audience_count, audience_details, avit_requirements,
+                    sitting_arrangements, status, created_at, updated_at, updated_by_user_id
+                )
+                SELECT
+                    id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
+                    purpose, audience_count, audience_details, avit_requirements,
+                    sitting_arrangements,
+                    CASE WHEN status = 'booked' THEN 'approved' ELSE status END,
+                    created_at, updated_at, updated_by_user_id
+                FROM bookings_old;
+
+                DROP TABLE bookings_old;
+
+                CREATE INDEX IF NOT EXISTS idx_booking_slot
+                ON bookings (booking_date, time_slot, venue_id, status);
+                """
+            )
 
         existing_users = {row["email"] for row in conn.execute("SELECT email FROM users")}
         for user in USERS:
@@ -150,8 +220,10 @@ def user_can_manage_booking(actor: sqlite3.Row, booking: sqlite3.Row) -> bool:
         return True
     if actor["id"] != booking["user_id"]:
         return False
+    if booking["status"] == "approved":
+        return False
     created_at = parse_iso(booking["created_at"])
-    if now_utc() <= created_at + timedelta(hours=48):
+    if now_utc() <= created_at + timedelta(hours=6):
         return True
     return bool(actor["can_edit_after_48h"])
 
@@ -242,7 +314,7 @@ def find_conflicts(
             WHERE b.booking_date = ?
               AND b.time_slot = ?
               AND b.venue_id = ?
-              AND b.status = 'booked'
+              AND b.status = 'approved'
         """
         params: list = [booking_date, time_slot, venue_id]
         if ignore_booking_id is not None:
@@ -383,6 +455,9 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/bookings":
             self.handle_create_bookings()
+            return
+        if parsed.path.startswith("/api/bookings/") and parsed.path.endswith("/approve"):
+            self.handle_approve_booking(parsed.path)
             return
         if parsed.path.startswith("/api/admin/users/") and parsed.path.endswith("/override"):
             self.handle_toggle_override(parsed.path)
@@ -619,8 +694,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     INSERT INTO bookings (
                         booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
                         purpose, audience_count, audience_details, avit_requirements,
-                        sitting_arrangements, created_at, updated_at, updated_by_user_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        status, sitting_arrangements, created_at, updated_at, updated_by_user_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         generate_booking_code(),
@@ -633,6 +708,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         audience_count,
                         audience_details,
                         json.dumps(avit_requirements),
+                        "pending",
                         json.dumps(sitting_arrangements),
                         utc_iso(),
                         utc_iso(),
@@ -647,19 +723,19 @@ class AppHandler(BaseHTTPRequestHandler):
                     add_notification(
                         conn,
                         user["id"],
-                        f"Booking confirmed for {booking['booking_date']} {booking['time_slot']} at {booking['venue_name']}.",
+                        f"Booking request submitted for approval: {booking['booking_date']} {booking['time_slot']} at {booking['venue_name']}.",
                     )
                     for admin_id in get_admin_ids(conn):
                         add_notification(
                             conn,
                             admin_id,
-                            f"New booking by {booking['booked_by']} for {booking['booking_date']} {booking['time_slot']} at {booking['venue_name']}.",
+                            f"Approval pending: {booking['booked_by']} requested {booking['booking_date']} {booking['time_slot']} at {booking['venue_name']}.",
                         )
             conn.commit()
             created = [serialize_booking(fetch_booking(conn, booking_id)) for booking_id in created_ids]
         self.json_response(
             {
-                "message": f"Booked successfully for {len(created)} slot/date selection(s).",
+                "message": f"Submitted {len(created)} slot/date selection(s) for approval.",
                 "created": created,
                 "skippedConflicts": conflicts,
             },
@@ -678,9 +754,12 @@ class AppHandler(BaseHTTPRequestHandler):
             if not booking:
                 self.json_response({"error": "Booking not found."}, HTTPStatus.NOT_FOUND)
                 return
+            if booking["status"] == "approved" and user["role"] != "admin":
+                self.json_response({"error": "Approved bookings cannot be edited by users."}, HTTPStatus.FORBIDDEN)
+                return
             if not user_can_manage_booking(user, booking):
                 self.json_response(
-                    {"error": "You cannot edit this booking after 48 hours unless admin grants rights."},
+                    {"error": "You cannot edit this pending booking after 6 hours unless admin grants rights."},
                     HTTPStatus.FORBIDDEN,
                 )
                 return
@@ -766,7 +845,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             if not user_can_manage_booking(user, booking):
                 self.json_response(
-                    {"error": "You cannot cancel this booking after 48 hours unless admin grants rights."},
+                    {"error": "You cannot cancel this booking after the editable period unless admin grants rights."},
                     HTTPStatus.FORBIDDEN,
                 )
                 return
@@ -788,6 +867,45 @@ class AppHandler(BaseHTTPRequestHandler):
                     )
             conn.commit()
         self.json_response({"message": "Booking cancelled successfully."})
+
+    def handle_approve_booking(self, path: str) -> None:
+        user = self.require_auth()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+        booking_id = int(path.split("/")[-2])
+        with db_connection() as conn:
+            booking = fetch_booking(conn, booking_id)
+            if not booking:
+                self.json_response({"error": "Booking not found."}, HTTPStatus.NOT_FOUND)
+                return
+            if booking["status"] != "pending":
+                self.json_response({"error": "Only pending bookings can be approved."}, HTTPStatus.BAD_REQUEST)
+                return
+            conflicts = find_conflicts(
+                conn,
+                booking["venue_id"],
+                booking["time_slot"],
+                [booking["booking_date"]],
+                ignore_booking_id=booking_id,
+            )
+            if conflicts:
+                self.json_response({"error": conflicts[0]["message"]}, HTTPStatus.CONFLICT)
+                return
+            conn.execute(
+                "UPDATE bookings SET status = 'approved', updated_at = ?, updated_by_user_id = ? WHERE id = ?",
+                (utc_iso(), user["id"], booking_id),
+            )
+            add_notification(
+                conn,
+                booking["user_id"],
+                f"Booking {booking['booking_code']} was approved by admin.",
+            )
+            conn.commit()
+            refreshed = fetch_booking(conn, booking_id)
+        self.json_response({"message": "Booking approved successfully.", "booking": serialize_booking(refreshed)})
 
     def handle_toggle_override(self, path: str) -> None:
         user = self.require_auth()

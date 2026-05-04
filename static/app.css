@@ -166,50 +166,18 @@ body {
   padding: 8px 12px;
 }
 
-.time-slot-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.time-slot-select {
+  width: 100%;
+  min-height: 260px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 8px;
 }
 
-.time-slot-btn {
-  border-radius: 18px;
-  padding: 11px 10px;
-  border: 1px solid #c9d8d2;
-  background: #eff7f3;
-  color: var(--ink);
-  text-align: center;
-}
-
-.time-slot-btn.selected {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2);
-}
-
-.time-slot-btn.partial {
-  background: #f6ebcc;
-  color: #7a5a0b;
-  border-color: #d8c182;
-}
-
-.time-slot-btn.booked {
-  background: #d3d7d6;
-  color: #5d6764;
-  border-color: #b8c0bd;
-}
-
-.time-slot-btn:disabled {
-  cursor: not-allowed;
-  transform: none;
-  opacity: 1;
-}
-
-.time-slot-note {
-  font-size: 0.8rem;
-  display: block;
-  margin-top: 4px;
+.time-slot-select option {
+  padding: 9px 10px;
+  border-radius: 10px;
 }
 
 .date-selector-card {
@@ -490,9 +458,14 @@ th {
   font-size: 0.85rem;
 }
 
-.status-booked {
+.status-approved {
   background: #dff0eb;
   color: var(--accent-dark);
+}
+
+.status-pending {
+  background: #f6ebcc;
+  color: #7a5a0b;
 }
 
 .status-cancelled {
@@ -524,6 +497,7 @@ th {
   .content-grid,
   #adminSection,
   .log-card,
+  .export-menu,
   #tableMessage,
   #historyMessage,
   .table-actions,
@@ -586,10 +560,6 @@ th {
   }
 
   .check-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .time-slot-grid {
     grid-template-columns: 1fr;
   }
 

@@ -7,6 +7,10 @@ const state = {
   users: [],
   timeSlots: [],
   selectedDates: [],
+  selectedTimeSlots: [],
+  activeSort: "date",
+  activeSortDirection: "asc",
+  dateMode: "single",
 };
 
 const AVIT_OPTIONS = ["Projector", "Sound system", "Microphone", "Recording", "Live streaming", "Hybrid meeting"];
@@ -28,7 +32,7 @@ const activeBookingTableBody = document.getElementById("activeBookingTableBody")
 const historyBookingTableBody = document.getElementById("historyBookingTableBody");
 const notificationsEl = document.getElementById("notifications");
 const venueIdEl = document.getElementById("venueId");
-const timeSlotGridEl = document.getElementById("timeSlotGrid");
+const timeSlotSelectEl = document.getElementById("timeSlotSelect");
 const bookedByEl = document.getElementById("bookedBy");
 const datePickerEl = document.getElementById("datePicker");
 const singleDateWrapEl = document.getElementById("singleDateWrap");
@@ -46,10 +50,6 @@ const addRangeBtn = document.getElementById("addRangeBtn");
 const clearDatesBtn = document.getElementById("clearDatesBtn");
 const clearSlotsBtn = document.getElementById("clearSlotsBtn");
 const printReportBtn = document.getElementById("printReportBtn");
-state.selectedTimeSlots = [];
-state.activeSort = "date";
-state.activeSortDirection = "asc";
-state.dateMode = "single";
 
 async function api(path, options = {}) {
   const headers = {
@@ -116,12 +116,11 @@ function parseDates() {
 
 function formatHijri(dateString) {
   try {
-    const formatted = new Intl.DateTimeFormat("ar-TN-u-ca-islamic", {
+    return new Intl.DateTimeFormat("ar-TN-u-ca-islamic", {
       day: "numeric",
       month: "long",
       year: "numeric",
     }).format(new Date(`${dateString}T00:00:00`));
-    return formatted;
   } catch {
     return "تعذر التحويل";
   }
@@ -135,44 +134,31 @@ function updateHijriPreview() {
     : "سيظهر التاريخ الهجري هنا بعد اختيار التاريخ الميلادي.";
 }
 
-function populateBootstrap(data) {
-  state.venues = data.venues;
-  state.users = data.users;
-  state.timeSlots = data.timeSlots;
-
-  venueIdEl.innerHTML = data.venues
-    .map((venue) => `<option value="${venue.id}">${venue.name} (${venue.capacity})</option>`)
-    .join("");
-  state.selectedTimeSlots = [];
-  renderTimeSlots();
-}
-
-function getActiveBookings() {
-  return state.bookings.filter((item) => item.status === "booked");
-}
-
-function getHistoryBookings() {
-  return state.bookings.filter((item) => item.status !== "booked");
-}
-
 function compareValues(a, b) {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
 }
 
+function getActiveBookings() {
+  return state.bookings.filter((item) => item.status === "pending" || item.status === "approved");
+}
+
+function getHistoryBookings() {
+  return state.bookings.filter((item) => item.status === "cancelled");
+}
+
 function sortActiveBookings(bookings) {
-  const field = state.activeSort;
   const factor = state.activeSortDirection === "desc" ? -1 : 1;
   return [...bookings].sort((left, right) => {
     let result = 0;
-    if (field === "date") {
+    if (state.activeSort === "date") {
       result = compareValues(left.bookingDate, right.bookingDate) || compareValues(left.timeSlot, right.timeSlot);
-    } else if (field === "time") {
+    } else if (state.activeSort === "time") {
       result = compareValues(left.timeSlot, right.timeSlot) || compareValues(left.bookingDate, right.bookingDate);
-    } else if (field === "venue") {
+    } else if (state.activeSort === "venue") {
       result = compareValues(left.venueName, right.venueName) || compareValues(left.bookingDate, right.bookingDate);
-    } else if (field === "user") {
+    } else if (state.activeSort === "user") {
       result = compareValues(left.bookedBy, right.bookedBy) || compareValues(left.bookingDate, right.bookingDate);
     }
     return result * factor;
@@ -183,16 +169,28 @@ function updateSortIndicators() {
   ["date", "time", "venue", "user"].forEach((field) => {
     const el = document.getElementById(`sort-${field}`);
     if (!el) return;
-    el.textContent = state.activeSort === field ? (state.activeSortDirection === "asc" ? "↑" : "↓") : "↕";
+    el.textContent = state.activeSort === field
+      ? (state.activeSortDirection === "asc" ? "↑" : "↓")
+      : "↕";
   });
 }
 
 function updateDateModeUi() {
-  const single = state.dateMode === "single";
-  singleDateWrapEl.classList.toggle("hidden", !single);
-  addDateBtn.classList.toggle("hidden", !single);
-  rangeDateWrapEl.classList.toggle("hidden", single);
-  addRangeBtn.classList.toggle("hidden", single);
+  const isSingle = state.dateMode === "single";
+  singleDateWrapEl.classList.toggle("hidden", !isSingle);
+  addDateBtn.classList.toggle("hidden", !isSingle);
+  rangeDateWrapEl.classList.toggle("hidden", isSingle);
+  addRangeBtn.classList.toggle("hidden", isSingle);
+}
+
+function populateBootstrap(data) {
+  state.venues = data.venues;
+  state.users = data.users;
+  state.timeSlots = data.timeSlots;
+  venueIdEl.innerHTML = data.venues
+    .map((venue) => `<option value="${venue.id}">${venue.name} (${venue.capacity})</option>`)
+    .join("");
+  renderTimeSlots();
 }
 
 function getSlotAvailability(slot) {
@@ -200,66 +198,62 @@ function getSlotAvailability(slot) {
   const selectedDates = parseDates();
   const editId = Number(bookingForm.dataset.editId || 0);
   if (!venueId || !selectedDates.length) {
-    return { status: "open", conflicts: 0, total: selectedDates.length };
+    return { status: "open", conflicts: 0 };
   }
 
-  const conflictingDates = selectedDates.filter((date) =>
+  const conflicts = selectedDates.filter((date) =>
     state.bookings.some(
       (booking) =>
         booking.id !== editId &&
-        booking.status === "booked" &&
+        booking.status === "approved" &&
         booking.venueId === venueId &&
         booking.timeSlot === slot &&
         booking.bookingDate === date
     )
   );
 
-  if (!conflictingDates.length) {
-    return { status: "open", conflicts: 0, total: selectedDates.length };
-  }
-  if (conflictingDates.length === selectedDates.length) {
-    return { status: "booked", conflicts: conflictingDates.length, total: selectedDates.length };
-  }
-  return { status: "partial", conflicts: conflictingDates.length, total: selectedDates.length };
+  if (!conflicts.length) return { status: "open", conflicts: 0 };
+  if (conflicts.length === selectedDates.length) return { status: "booked", conflicts: conflicts.length };
+  return { status: "partial", conflicts: conflicts.length };
 }
 
 function renderTimeSlots() {
   state.selectedTimeSlots = state.selectedTimeSlots.filter((slot) => getSlotAvailability(slot).status !== "booked");
-
-  timeSlotGridEl.innerHTML = state.timeSlots
+  const visibleSlots = state.timeSlots.filter((slot) => getSlotAvailability(slot).status !== "booked");
+  timeSlotSelectEl.innerHTML = visibleSlots
     .map((slot) => {
       const availability = getSlotAvailability(slot);
-      const isSelected = state.selectedTimeSlots.includes(slot);
-      const classes = ["time-slot-btn"];
-      let note = "Available";
-      let disabled = "";
-
-      if (availability.status === "partial") {
-        classes.push("partial");
-        note = `${availability.conflicts} date(s) booked`;
-      } else if (availability.status === "booked") {
-        classes.push("booked");
-        note = "Booked";
-        disabled = "disabled";
-      }
-
-      if (isSelected) {
-        classes.push("selected");
-      }
-
-      return `
-        <button
-          type="button"
-          class="${classes.join(" ")}"
-          data-slot="${slot}"
-          ${disabled}
-        >
-          <span>${slot}</span>
-          <span class="time-slot-note">${note}</span>
-        </button>
-      `;
+      const suffix = availability.status === "partial" ? ` (${availability.conflicts} date clash)` : "";
+      const selected = state.selectedTimeSlots.includes(slot) ? "selected" : "";
+      return `<option value="${slot}" ${selected}>${slot}${suffix}</option>`;
     })
     .join("");
+}
+
+function renderSelectedDates() {
+  selectedDatesEl.innerHTML = state.selectedDates.length
+    ? state.selectedDates
+        .map(
+          (date) => `
+            <span class="date-chip">
+              <span>${escapeHtml(date)}</span>
+              <button type="button" class="chip-remove" data-date="${date}">x</button>
+            </span>
+          `
+        )
+        .join("")
+    : `<span class="hint">No dates selected yet.</span>`;
+  updateHijriPreview();
+}
+
+function canManageBooking(booking) {
+  if (state.currentUser.role === "admin") return true;
+  if (booking.userId !== state.currentUser.id) return false;
+  if (state.currentUser.canEditAfter48h) return true;
+  if (booking.status === "approved") return false;
+  const createdAt = new Date(booking.createdAt).getTime();
+  const hoursElapsed = (Date.now() - createdAt) / (1000 * 60 * 60);
+  return hoursElapsed <= 6;
 }
 
 function renderBookings() {
@@ -272,9 +266,13 @@ function renderBookings() {
     ? activeBookings
         .map((booking) => {
           const canEdit = canManageBooking(booking);
-          const disabled = false;
-          const editButton = `<button class="secondary-btn" ${!canEdit || disabled ? "disabled" : ""} data-action="edit" data-id="${booking.id}">Edit</button>`;
-          const deleteButton = `<button class="danger-btn" ${!canEdit || disabled ? "disabled" : ""} data-action="delete" data-id="${booking.id}">Cancel</button>`;
+          const approveButton = state.currentUser.role === "admin" && booking.status === "pending"
+            ? `<button class="primary-btn" data-action="approve" data-id="${booking.id}">Approve</button>`
+            : "";
+          const editButton = booking.status === "pending"
+            ? `<button class="secondary-btn" ${!canEdit ? "disabled" : ""} data-action="edit" data-id="${booking.id}">Edit</button>`
+            : "";
+          const cancelButton = `<button class="danger-btn" ${!canEdit ? "disabled" : ""} data-action="delete" data-id="${booking.id}">Cancel</button>`;
           return `
             <tr>
               <td>${escapeHtml(booking.bookingDate)}</td>
@@ -284,7 +282,7 @@ function renderBookings() {
               <td>${escapeHtml(booking.purpose)}</td>
               <td>${escapeHtml(String(booking.audienceCount))}</td>
               <td><span class="status-pill status-${booking.status}">${escapeHtml(booking.status)}</span></td>
-              <td><div class="table-actions">${editButton}${deleteButton}</div></td>
+              <td><div class="table-actions">${approveButton}${editButton}${cancelButton}</div></td>
             </tr>
           `;
         })
@@ -310,11 +308,11 @@ function renderBookings() {
     : `<tr><td colspan="7">No booking history found.</td></tr>`;
 
   tableTag.textContent = state.currentUser.role === "admin" ? "All Bookings" : "My Bookings";
-  tableTitle.textContent = state.currentUser.role === "admin" ? "Current active bookings" : "Your current active bookings";
+  tableTitle.textContent = state.currentUser.role === "admin" ? "Approval and active bookings" : "Your pending and approved bookings";
   tableMessage.textContent = state.currentUser.role === "admin"
-    ? "Admins can edit, cancel, and export all bookings."
-    : "You can edit or cancel your own active bookings within 48 hours, unless admin grants extended rights.";
-  historyMessage.textContent = "Previous and cancelled records are shown here without edit controls.";
+    ? "Admins can approve pending bookings and cancel any booking."
+    : "Pending bookings can be edited for 6 hours. Approved bookings are locked from editing.";
+  historyMessage.textContent = "Cancelled records are shown here.";
   updateSortIndicators();
 }
 
@@ -347,7 +345,7 @@ function renderAdminUsers() {
         <div class="admin-user-item">
           <strong>${escapeHtml(user.name)}</strong><br />
           <span>${escapeHtml(user.email)}</span><br />
-          <span>48-hour override: ${user.canEditAfter48h ? "Enabled" : "Disabled"}</span><br /><br />
+          <span>Extended edit override: ${user.canEditAfter48h ? "Enabled" : "Disabled"}</span><br /><br />
           <button class="secondary-btn" data-action="toggle-override" data-id="${user.id}" data-value="${user.canEditAfter48h ? "0" : "1"}">
             ${user.canEditAfter48h ? "Remove extra rights" : "Grant extra rights"}
           </button>
@@ -355,15 +353,6 @@ function renderAdminUsers() {
       `
     )
     .join("");
-}
-
-function canManageBooking(booking) {
-  if (state.currentUser.role === "admin") return true;
-  if (booking.userId !== state.currentUser.id) return false;
-  if (state.currentUser.canEditAfter48h) return true;
-  const createdAt = new Date(booking.createdAt).getTime();
-  const hoursElapsed = (Date.now() - createdAt) / (1000 * 60 * 60);
-  return hoursElapsed <= 48;
 }
 
 async function refreshData() {
@@ -379,6 +368,7 @@ async function refreshData() {
   if (refreshedUser) {
     state.currentUser = { ...state.currentUser, ...refreshedUser };
   }
+  renderTimeSlots();
   renderBookings();
   renderNotifications();
   renderAdminUsers();
@@ -406,14 +396,13 @@ function fillBookingForm(booking) {
   venueIdEl.value = booking.venueId;
   state.selectedTimeSlots = [booking.timeSlot];
   state.selectedDates = [booking.bookingDate];
-  renderSelectedDates();
-  renderTimeSlots();
   document.getElementById("audienceCount").value = booking.audienceCount;
   setCheckedValues("avitOptions", booking.avitRequirements);
   setCheckedValues("sittingOptions", booking.sittingArrangements);
   bookingForm.dataset.editId = booking.id;
-  updateHijriPreview();
-  setMessage(bookingMessage, `Editing booking ${booking.bookingCode}. Submit to save changes.`, "success");
+  renderSelectedDates();
+  renderTimeSlots();
+  setMessage(bookingMessage, `Editing pending booking ${booking.bookingCode}. Submit to save changes.`, "success");
 }
 
 function resetBookingForm() {
@@ -425,33 +414,16 @@ function resetBookingForm() {
   state.dateMode = "single";
   document.querySelector("input[name='dateMode'][value='single']").checked = true;
   updateDateModeUi();
-  renderSelectedDates();
-  renderTimeSlots();
-  updateHijriPreview();
   setCheckedValues("avitOptions", []);
   setCheckedValues("sittingOptions", []);
-}
-
-function renderSelectedDates() {
-  selectedDatesEl.innerHTML = state.selectedDates.length
-    ? state.selectedDates
-        .map(
-          (date) => `
-            <span class="date-chip">
-              <span>${escapeHtml(date)}</span>
-              <button type="button" class="chip-remove" data-date="${date}">x</button>
-            </span>
-          `
-        )
-        .join("")
-    : `<span class="hint">No dates selected yet.</span>`;
-  updateHijriPreview();
+  renderSelectedDates();
+  renderTimeSlots();
 }
 
 function addSelectedDate() {
   const value = datePickerEl.value;
   if (!value) {
-    setMessage(bookingMessage, "Please choose a date from the calendar first.", "error");
+    setMessage(bookingMessage, "Please choose a date first.", "error");
     return;
   }
   if (!state.selectedDates.includes(value)) {
@@ -475,18 +447,14 @@ function addDateRange() {
     setMessage(bookingMessage, "End date must be after or equal to start date.", "error");
     return;
   }
-
   const cursor = new Date(`${start}T00:00:00`);
   const endDate = new Date(`${end}T00:00:00`);
   const datesToAdd = [];
-
   while (cursor <= endDate) {
     datesToAdd.push(cursor.toISOString().slice(0, 10));
     cursor.setDate(cursor.getDate() + 1);
   }
-
-  const mergedDates = new Set([...state.selectedDates, ...datesToAdd]);
-  state.selectedDates = [...mergedDates].sort();
+  state.selectedDates = [...new Set([...state.selectedDates, ...datesToAdd])].sort();
   rangeStartDateEl.value = "";
   rangeEndDateEl.value = "";
   renderSelectedDates();
@@ -541,7 +509,7 @@ bookingForm.addEventListener("submit", async (event) => {
   };
 
   if (!payload.dates.length) {
-    setMessage(bookingMessage, "Enter at least one Gregorian date.", "error");
+    setMessage(bookingMessage, "Please select at least one date.", "error");
     return;
   }
   if (!payload.timeSlots.length) {
@@ -555,13 +523,13 @@ bookingForm.addEventListener("submit", async (event) => {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-      setMessage(bookingMessage, "Booking updated successfully.", "success");
+      setMessage(bookingMessage, "Pending booking updated successfully.", "success");
     } else {
       await api("/api/bookings", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setMessage(bookingMessage, "Booked successfully.", "success");
+      setMessage(bookingMessage, "Booking request submitted for approval.", "success");
     }
     resetBookingForm();
     await refreshData();
@@ -576,7 +544,7 @@ bookingForm.addEventListener("submit", async (event) => {
             method: "POST",
             body: JSON.stringify({ ...payload, allowPartial: true }),
           });
-          setMessage(bookingMessage, "Available dates booked successfully.", "success");
+          setMessage(bookingMessage, "Remaining available selections submitted for approval.", "success");
           resetBookingForm();
           await refreshData();
           return;
@@ -612,17 +580,8 @@ selectedDatesEl.addEventListener("click", (event) => {
   renderTimeSlots();
 });
 
-timeSlotGridEl.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-slot]");
-  if (!button || button.disabled) return;
-  const slot = button.dataset.slot;
-  if (state.selectedTimeSlots.includes(slot)) {
-    state.selectedTimeSlots = state.selectedTimeSlots.filter((item) => item !== slot);
-  } else {
-    state.selectedTimeSlots.push(slot);
-    state.selectedTimeSlots.sort();
-  }
-  renderTimeSlots();
+timeSlotSelectEl.addEventListener("change", () => {
+  state.selectedTimeSlots = [...timeSlotSelectEl.selectedOptions].map((option) => option.value).sort();
 });
 
 venueIdEl.addEventListener("change", () => {
@@ -655,7 +614,7 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
   try {
     await api("/api/logout", { method: "POST", body: JSON.stringify({}) });
   } catch {
-    // Ignore logout errors and return to login view.
+    // Ignore logout errors
   }
   showLogin();
   resetBookingForm();
@@ -668,9 +627,7 @@ document.querySelectorAll(".export-btn").forEach((button) => {
       const response = await fetch(`/api/export?format=${format}`, {
         headers: { "X-Session-Token": state.token },
       });
-      if (!response.ok) {
-        throw new Error("Export failed.");
-      }
+      if (!response.ok) throw new Error("Export failed.");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -686,10 +643,7 @@ document.querySelectorAll(".export-btn").forEach((button) => {
 });
 
 printReportBtn.addEventListener("click", () => {
-  const historySection = document.getElementById("historySection");
-  const wasOpen = historySection.open;
   window.print();
-  historySection.open = wasOpen;
 });
 
 activeBookingTableBody.addEventListener("click", async (event) => {
@@ -701,6 +655,20 @@ activeBookingTableBody.addEventListener("click", async (event) => {
 
   if (button.dataset.action === "edit") {
     fillBookingForm(booking);
+    return;
+  }
+
+  if (button.dataset.action === "approve") {
+    try {
+      await api(`/api/bookings/${bookingId}/approve`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setMessage(bookingMessage, "Booking approved successfully.", "success");
+      await refreshData();
+    } catch (error) {
+      setMessage(bookingMessage, error.message, "error");
+    }
     return;
   }
 
