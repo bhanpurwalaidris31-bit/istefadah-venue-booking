@@ -168,11 +168,12 @@ body {
 
 .time-slot-select {
   width: 100%;
-  min-height: 26px;
+  height: 80px;
   border-radius: 16px;
   border: 1px solid var(--line);
   background: #fff;
   padding: 8px;
+  overflow-y: auto;
 }
 
 .time-slot-select option {
