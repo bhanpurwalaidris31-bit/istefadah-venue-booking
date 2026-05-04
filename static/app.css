@@ -168,7 +168,7 @@ body {
 
 .time-slot-select {
   width: 100%;
-  min-height: 260px;
+  min-height: 26px;
   border-radius: 16px;
   border: 1px solid var(--line);
   background: #fff;
