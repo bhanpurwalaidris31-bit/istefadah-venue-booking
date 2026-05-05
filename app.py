@@ -314,7 +314,7 @@ def find_conflicts(
             WHERE b.booking_date = ?
               AND b.time_slot = ?
               AND b.venue_id = ?
-              AND b.status = 'approved'
+              AND b.status IN ('pending', 'approved')
         """
         params: list = [booking_date, time_slot, venue_id]
         if ignore_booking_id is not None:

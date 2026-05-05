@@ -205,7 +205,7 @@ function getSlotAvailability(slot) {
     state.bookings.some(
       (booking) =>
         booking.id !== editId &&
-        booking.status === "approved" &&
+        (booking.status === "approved" || booking.status === "pending") &&
         booking.venueId === venueId &&
         booking.timeSlot === slot &&
         booking.bookingDate === date
