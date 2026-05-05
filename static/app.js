@@ -32,7 +32,9 @@ const activeBookingTableBody = document.getElementById("activeBookingTableBody")
 const historyBookingTableBody = document.getElementById("historyBookingTableBody");
 const notificationsEl = document.getElementById("notifications");
 const venueIdEl = document.getElementById("venueId");
-const timeSlotSelectEl = document.getElementById("timeSlotSelect");
+const timeSlotToggleEl = document.getElementById("timeSlotToggle");
+const timeSlotSummaryEl = document.getElementById("timeSlotSummary");
+const timeSlotMenuEl = document.getElementById("timeSlotMenu");
 const bookedByEl = document.getElementById("bookedBy");
 const datePickerEl = document.getElementById("datePicker");
 const singleDateWrapEl = document.getElementById("singleDateWrap");
@@ -193,6 +195,18 @@ function populateBootstrap(data) {
   renderTimeSlots();
 }
 
+function updateTimeSlotSummary() {
+  if (!state.selectedTimeSlots.length) {
+    timeSlotSummaryEl.textContent = "Select time slot(s)";
+    return;
+  }
+  if (state.selectedTimeSlots.length === 1) {
+    timeSlotSummaryEl.textContent = state.selectedTimeSlots[0];
+    return;
+  }
+  timeSlotSummaryEl.textContent = `${state.selectedTimeSlots.length} slots selected`;
+}
+
 function getSlotAvailability(slot) {
   const venueId = Number(venueIdEl.value);
   const selectedDates = parseDates();
@@ -220,14 +234,22 @@ function getSlotAvailability(slot) {
 function renderTimeSlots() {
   state.selectedTimeSlots = state.selectedTimeSlots.filter((slot) => getSlotAvailability(slot).status !== "booked");
   const visibleSlots = state.timeSlots.filter((slot) => getSlotAvailability(slot).status !== "booked");
-  timeSlotSelectEl.innerHTML = visibleSlots
+  timeSlotMenuEl.innerHTML = visibleSlots
     .map((slot) => {
       const availability = getSlotAvailability(slot);
-      const suffix = availability.status === "partial" ? ` (${availability.conflicts} date clash)` : "";
-      const selected = state.selectedTimeSlots.includes(slot) ? "selected" : "";
-      return `<option value="${slot}" ${selected}>${slot}${suffix}</option>`;
+      const checked = state.selectedTimeSlots.includes(slot) ? "checked" : "";
+      const partialClass = availability.status === "partial" ? "partial" : "";
+      const note = availability.status === "partial" ? `<span class="slot-option-note">${availability.conflicts} date clash</span>` : "";
+      return `
+        <label class="slot-option ${partialClass}">
+          <span class="slot-option-text">${slot}</span>
+          ${note}
+          <input type="checkbox" value="${slot}" ${checked} />
+        </label>
+      `;
     })
     .join("");
+  updateTimeSlotSummary();
 }
 
 function renderSelectedDates() {
@@ -580,8 +602,28 @@ selectedDatesEl.addEventListener("click", (event) => {
   renderTimeSlots();
 });
 
-timeSlotSelectEl.addEventListener("change", () => {
-  state.selectedTimeSlots = [...timeSlotSelectEl.selectedOptions].map((option) => option.value).sort();
+timeSlotToggleEl.addEventListener("click", () => {
+  timeSlotMenuEl.classList.toggle("hidden");
+});
+
+timeSlotMenuEl.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("input[type='checkbox']");
+  if (!checkbox) return;
+  if (checkbox.checked) {
+    if (!state.selectedTimeSlots.includes(checkbox.value)) {
+      state.selectedTimeSlots.push(checkbox.value);
+      state.selectedTimeSlots.sort();
+    }
+  } else {
+    state.selectedTimeSlots = state.selectedTimeSlots.filter((slot) => slot !== checkbox.value);
+  }
+  updateTimeSlotSummary();
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".slot-dropdown")) {
+    timeSlotMenuEl.classList.add("hidden");
+  }
 });
 
 venueIdEl.addEventListener("change", () => {

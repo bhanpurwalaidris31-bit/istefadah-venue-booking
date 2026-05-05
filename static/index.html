@@ -120,7 +120,13 @@
                   <span>Time slots</span>
                   <button id="clearSlotsBtn" type="button" class="ghost-btn small-btn">Clear selected slots</button>
                 </div>
-                <select id="timeSlotSelect" class="time-slot-select" multiple size="10"></select>
+                <div class="slot-dropdown">
+                  <button id="timeSlotToggle" type="button" class="slot-dropdown-toggle">
+                    <span id="timeSlotSummary">Select time slot(s)</span>
+                    <span class="slot-dropdown-caret">▾</span>
+                  </button>
+                  <div id="timeSlotMenu" class="slot-dropdown-menu hidden"></div>
+                </div>
               </div>
               <fieldset class="half-field compact-options">
                 <legend>AVIT requirements</legend>

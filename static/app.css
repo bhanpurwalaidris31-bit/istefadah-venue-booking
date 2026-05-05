@@ -90,9 +90,9 @@ body {
 }
 
 .app-panel {
-  padding: 34px;
+  padding: 26px 28px;
   display: grid;
-  gap: 22px;
+  gap: 16px;
   width: 100%;
   max-width: none;
   align-content: start;
@@ -130,7 +130,7 @@ body {
 
 .grid-form {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .booking-form {
@@ -158,7 +158,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: var(--muted);
 }
 
@@ -166,26 +166,87 @@ body {
   padding: 8px 12px;
 }
 
-.time-slot-select {
+.slot-dropdown {
+  position: relative;
+}
+
+.slot-dropdown-toggle {
   width: 100%;
-  height: 52px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   border-radius: 16px;
   border: 1px solid var(--line);
   background: #fff;
+  padding: 10px 12px;
+  color: var(--ink);
+}
+
+.slot-dropdown-toggle:hover {
+  transform: none;
+}
+
+.slot-dropdown-caret {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.slot-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
   padding: 8px;
+  max-height: 220px;
   overflow-y: auto;
 }
 
-.time-slot-select option {
+.slot-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
   padding: 9px 10px;
-  border-radius: 10px;
+  border-radius: 12px;
+  margin-bottom: 4px;
+  background: #f8fbf9;
+  border: 1px solid #e1ebe7;
+}
+
+.slot-option:last-child {
+  margin-bottom: 0;
+}
+
+.slot-option.partial {
+  background: #f6ebcc;
+  border-color: #e2c67b;
+}
+
+.slot-option input {
+  width: auto;
+}
+
+.slot-option-text {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.slot-option-note {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .date-selector-card {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .mode-fieldset {
@@ -215,7 +276,7 @@ body {
 
 .selected-dates {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: flex-start;
 }
@@ -270,7 +331,7 @@ textarea {
   width: 100%;
   border-radius: 16px;
   border: 1px solid var(--line);
-  padding: 11px 13px;
+  padding: 10px 12px;
   background: #fff;
   color: var(--ink);
 }
@@ -283,18 +344,18 @@ textarea {
 .check-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .checkbox-pill {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 9px 11px;
+  padding: 8px 10px;
   background: var(--panel-alt);
   border: 1px solid #c9d8d2;
   border-radius: 14px;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
 }
 
 .compact-options {
@@ -305,7 +366,7 @@ textarea {
 button {
   border: none;
   border-radius: 999px;
-  padding: 12px 18px;
+  padding: 10px 16px;
   cursor: pointer;
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
@@ -419,7 +480,7 @@ table {
 th,
 td {
   text-align: left;
-  padding: 14px 12px;
+  padding: 11px 10px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
