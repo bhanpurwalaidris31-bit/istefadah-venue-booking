@@ -13,8 +13,8 @@ const state = {
   dateMode: "single",
 };
 
-const AVIT_OPTIONS = ["Projector", "Sound system", "Microphone", "Recording", "Live streaming", "Hybrid meeting"];
-const SITTING_OPTIONS = ["Sujni", "Podium", "Boardroom", "U-shape", "Round tables", "Floor seating"];
+const AVIT_OPTIONS = ["Projector", "Sound system", "Microphone", "Recording", "Live streaming"];
+const SITTING_OPTIONS = ["Sujni", "Podium", "Boardroom", "Round tables", "Chairs"];
 
 const loginView = document.getElementById("loginView");
 const appView = document.getElementById("appView");
@@ -44,6 +44,16 @@ const rangeEndDateEl = document.getElementById("rangeEndDate");
 const hijriPreviewEl = document.getElementById("hijriPreview");
 const adminSection = document.getElementById("adminSection");
 const adminUsers = document.getElementById("adminUsers");
+const createUserForm = document.getElementById("createUserForm");
+const createUserMessage = document.getElementById("createUserMessage");
+const passwordSection = document.getElementById("passwordSection");
+const passwordForm = document.getElementById("passwordForm");
+const passwordMessage = document.getElementById("passwordMessage");
+const passwordResetHint = document.getElementById("passwordResetHint");
+const bookingSection = document.getElementById("bookingSection");
+const historySection = document.getElementById("historySection");
+const logSection = document.getElementById("logSection");
+const exportSection = document.getElementById("exportSection");
 const tableTag = document.getElementById("tableTag");
 const tableTitle = document.getElementById("tableTitle");
 const selectedDatesEl = document.getElementById("selectedDates");
@@ -52,6 +62,55 @@ const addRangeBtn = document.getElementById("addRangeBtn");
 const clearDatesBtn = document.getElementById("clearDatesBtn");
 const clearSlotsBtn = document.getElementById("clearSlotsBtn");
 const printReportBtn = document.getElementById("printReportBtn");
+const clearLogsBtn = document.getElementById("clearLogsBtn");
+const adminClearBookingsBtn = document.getElementById("adminClearBookingsBtn");
+
+// Dynamic Toast system definition
+function showToast(message, type = "info") {
+  let container = document.getElementById("toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    container.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    `;
+    document.body.appendChild(container);
+  }
+  
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.style.cssText = `
+    background: ${type === 'error' ? '#f44336' : type === 'success' ? '#4caf50' : '#2196f3'};
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 14px;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  `;
+  toast.textContent = message;
+  container.appendChild(toast);
+  
+  setTimeout(() => { toast.style.opacity = "1"; }, 10);
+  
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => { toast.remove(); }, 300);
+  }, 4000);
+
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification("Istefadah Booking Update", { body: message });
+  }
+}
 
 async function api(path, options = {}) {
   const headers = {
@@ -147,7 +206,11 @@ function getActiveBookings() {
 }
 
 function getHistoryBookings() {
-  return state.bookings.filter((item) => item.status === "cancelled");
+  return state.bookings.filter(
+    (item) =>
+      item.status === "cancelled" ||
+      item.status === "completed"
+  );
 }
 
 function sortActiveBookings(bookings) {
@@ -367,33 +430,95 @@ function renderAdminUsers() {
         <div class="admin-user-item">
           <strong>${escapeHtml(user.name)}</strong><br />
           <span>${escapeHtml(user.email)}</span><br />
+          <span>Password status: ${user.passwordResetRequired ? "Reset required on next login" : "Active"}</span><br />
+          <span>Booking records: ${user.bookingCount || 0}</span><br />
           <span>Extended edit override: ${user.canEditAfter48h ? "Enabled" : "Disabled"}</span><br /><br />
-          <button class="secondary-btn" data-action="toggle-override" data-id="${user.id}" data-value="${user.canEditAfter48h ? "0" : "1"}">
-            ${user.canEditAfter48h ? "Remove extra rights" : "Grant extra rights"}
-          </button>
+          <div class="table-actions">
+            <button class="secondary-btn" data-action="toggle-override" data-id="${user.id}" data-value="${user.canEditAfter48h ? "0" : "1"}">
+              ${user.canEditAfter48h ? "Remove extra rights" : "Grant extra rights"}
+            </button>
+            <button class="secondary-btn" data-action="reset-password" data-id="${user.id}">
+              Reset password
+            </button>
+            <button class="danger-btn" ${user.canDelete ? "" : "disabled"} data-action="delete-user" data-id="${user.id}">
+              Delete user
+            </button>
+          </div>
         </div>
       `
     )
     .join("");
 }
 
+function resetCreateUserForm() {
+  if (createUserForm) {
+    createUserForm.reset();
+  }
+}
+
+function resetPasswordForm() {
+  passwordForm?.reset();
+}
+
+function toggleRestrictedMode() {
+  const mustReset = Boolean(state.currentUser?.passwordResetRequired);
+  passwordResetHint.classList.toggle("hidden", !mustReset);
+  bookingSection.classList.toggle("hidden", mustReset);
+  historySection.classList.toggle("hidden", mustReset);
+  logSection.classList.toggle("hidden", mustReset);
+  exportSection.classList.toggle("hidden", mustReset);
+  if (state.currentUser?.role === "admin") {
+    adminSection.classList.toggle("hidden", mustReset);
+    clearLogsBtn?.classList.remove("hidden");
+    adminClearBookingsBtn?.classList.remove("hidden");
+  } else {
+    clearLogsBtn?.classList.add("hidden");
+    adminClearBookingsBtn?.classList.add("hidden");
+  }
+}
+
 async function refreshData() {
-  const [bookingsPayload, notificationsPayload, bootstrapPayload] = await Promise.all([
-    api("/api/bookings"),
-    api("/api/notifications"),
-    api("/api/bootstrap"),
-  ]);
-  state.bookings = bookingsPayload.bookings;
-  state.notifications = notificationsPayload.notifications;
+  const bootstrapPayload = await api("/api/bootstrap");
   state.users = bootstrapPayload.users;
+  state.venues = bootstrapPayload.venues;
+  state.timeSlots = bootstrapPayload.timeSlots;
   const refreshedUser = state.users.find((user) => user.id === state.currentUser.id);
   if (refreshedUser) {
     state.currentUser = { ...state.currentUser, ...refreshedUser };
   }
-  renderTimeSlots();
+
+  if (state.currentUser.passwordResetRequired) {
+    state.bookings = [];
+    state.notifications = [];
+    populateBootstrap(bootstrapPayload);
+    renderBookings();
+    renderNotifications();
+    renderAdminUsers();
+    toggleRestrictedMode();
+    return;
+  }
+
+  const [bookingsPayload, notificationsPayload] = await Promise.all([
+    api("/api/bookings"),
+    api("/api/notifications"),
+  ]);
+
+  // Check for new notifications to push toast popups
+  if (state.notifications.length > 0 && notificationsPayload.notifications.length > 0) {
+    const latestNew = notificationsPayload.notifications[0];
+    const latestOld = state.notifications[0];
+    if (latestNew.id > latestOld.id) {
+      showToast(latestNew.message, "info");
+    }
+  }
+
+  state.bookings = bookingsPayload.bookings;
+  state.notifications = notificationsPayload.notifications;
+  populateBootstrap(bootstrapPayload);
   renderBookings();
   renderNotifications();
   renderAdminUsers();
+  toggleRestrictedMode();
 }
 
 function showApp() {
@@ -403,6 +528,7 @@ function showApp() {
   bookedByEl.value = state.currentUser.name;
   renderSelectedDates();
   renderTimeSlots();
+  toggleRestrictedMode();
 }
 
 function showLogin() {
@@ -445,7 +571,7 @@ function resetBookingForm() {
 function addSelectedDate() {
   const value = datePickerEl.value;
   if (!value) {
-    setMessage(bookingMessage, "Please choose a date first.", "error");
+    showToast("Please choose a date first.", "error");
     return;
   }
   if (!state.selectedDates.includes(value)) {
@@ -462,11 +588,11 @@ function addDateRange() {
   const start = rangeStartDateEl.value;
   const end = rangeEndDateEl.value;
   if (!start || !end) {
-    setMessage(bookingMessage, "Please choose both start and end dates.", "error");
+    showToast("Please choose both start and end dates.", "error");
     return;
   }
   if (start > end) {
-    setMessage(bookingMessage, "End date must be after or equal to start date.", "error");
+    showToast("End date must be after or equal to start date.", "error");
     return;
   }
   const cursor = new Date(`${start}T00:00:00`);
@@ -484,10 +610,39 @@ function addDateRange() {
   setMessage(bookingMessage, "");
 }
 
+// Bind directly to password toggle buttons, preventing labels from hijacking clicks
+function initPasswordToggles() {
+  document.querySelectorAll(".password-toggle-btn").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const wrapper = btn.closest(".password-wrapper");
+      if (!wrapper) return;
+      const input = wrapper.querySelector("input");
+      const eyeIcon = btn.querySelector(".eye-icon");
+      const eyeOffIcon = btn.querySelector(".eye-off-icon");
+      
+      if (input.type === "password") {
+        input.type = "text";
+        eyeIcon.style.display = "none";
+        eyeOffIcon.style.display = "block";
+      } else {
+        input.type = "password";
+        eyeIcon.style.display = "block";
+        eyeOffIcon.style.display = "none";
+      }
+    });
+  });
+}
+
 async function bootstrap() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+  initPasswordToggles();
   renderCheckboxGroup("avitOptions", AVIT_OPTIONS);
   renderCheckboxGroup("sittingOptions", SITTING_OPTIONS);
-  const data = await api("/api/bootstrap", { headers: { "Content-Type": "application/json" } });
+  const data = await api("/api/bootstrap", { headers: { "Type": "application/json" } });
   populateBootstrap(data);
   updateDateModeUi();
   updateHijriPreview();
@@ -508,6 +663,7 @@ loginForm.addEventListener("submit", async (event) => {
     state.currentUser = payload.user;
     showApp();
     await refreshData();
+    showToast(`Welcome back, ${state.currentUser.name}!`, "success");
     setMessage(loginMessage, "");
   } catch (error) {
     setMessage(loginMessage, error.message, "error");
@@ -531,11 +687,11 @@ bookingForm.addEventListener("submit", async (event) => {
   };
 
   if (!payload.dates.length) {
-    setMessage(bookingMessage, "Please select at least one date.", "error");
+    showToast("Please select at least one date.", "error");
     return;
   }
   if (!payload.timeSlots.length) {
-    setMessage(bookingMessage, "Please select at least one time slot.", "error");
+    showToast("Please select at least one time slot.", "error");
     return;
   }
 
@@ -545,13 +701,13 @@ bookingForm.addEventListener("submit", async (event) => {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-      setMessage(bookingMessage, "Pending booking updated successfully.", "success");
+      showToast("Pending booking updated successfully.", "success");
     } else {
       await api("/api/bookings", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setMessage(bookingMessage, "Booking request submitted for approval.", "success");
+      showToast("Booking request submitted for approval.", "success");
     }
     resetBookingForm();
     await refreshData();
@@ -566,17 +722,17 @@ bookingForm.addEventListener("submit", async (event) => {
             method: "POST",
             body: JSON.stringify({ ...payload, allowPartial: true }),
           });
-          setMessage(bookingMessage, "Remaining available selections submitted for approval.", "success");
+          showToast("Remaining selections submitted for approval.", "success");
           resetBookingForm();
           await refreshData();
           return;
         } catch (retryError) {
-          setMessage(bookingMessage, retryError.message, "error");
+          showToast(retryError.message, "error");
           return;
         }
       }
     }
-    setMessage(bookingMessage, error.message, "error");
+    showToast(error.message, "error");
   }
 });
 
@@ -620,12 +776,6 @@ timeSlotMenuEl.addEventListener("change", (event) => {
   updateTimeSlotSummary();
 });
 
-document.addEventListener("click", (event) => {
-  if (!event.target.closest(".slot-dropdown")) {
-    timeSlotMenuEl.classList.add("hidden");
-  }
-});
-
 venueIdEl.addEventListener("change", () => {
   renderTimeSlots();
 });
@@ -650,7 +800,10 @@ document.querySelectorAll(".sort-header").forEach((button) => {
   });
 });
 
-document.getElementById("refreshBtn").addEventListener("click", () => refreshData());
+document.getElementById("refreshBtn").addEventListener("click", () => {
+  refreshData();
+  showToast("Application data refreshed.", "info");
+});
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   try {
@@ -660,6 +813,9 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
   }
   showLogin();
   resetBookingForm();
+  resetCreateUserForm();
+  resetPasswordForm();
+  showToast("Logged out successfully.", "info");
 });
 
 document.querySelectorAll(".export-btn").forEach((button) => {
@@ -678,14 +834,39 @@ document.querySelectorAll(".export-btn").forEach((button) => {
       link.download = `istefadah-bookings.${extension}`;
       link.click();
       URL.revokeObjectURL(url);
+      showToast(`Booking report downloaded as ${format.toUpperCase()}.`, "success");
     } catch (error) {
-      setMessage(tableMessage, error.message, "error");
+      showToast(error.message, "error");
     }
   });
 });
 
 printReportBtn.addEventListener("click", () => {
   window.print();
+});
+
+clearLogsBtn?.addEventListener("click", async () => {
+  const confirmed = window.confirm("Are you sure you want to clear all activity logs? This cannot be undone.");
+  if (!confirmed) return;
+  try {
+    await api("/api/admin/logs", { method: "DELETE" });
+    showToast("Activity logs cleared successfully.", "info");
+    await refreshData();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+});
+
+adminClearBookingsBtn?.addEventListener("click", async () => {
+  const confirmed = window.confirm("CRITICAL WARNING: Are you sure you want to permanently delete ALL bookings from the database? This cannot be undone.");
+  if (!confirmed) return;
+  try {
+    await api("/api/admin/bookings/clear", { method: "POST" });
+    showToast("All bookings wiped out successfully.", "info");
+    await refreshData();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 });
 
 activeBookingTableBody.addEventListener("click", async (event) => {
@@ -706,10 +887,10 @@ activeBookingTableBody.addEventListener("click", async (event) => {
         method: "POST",
         body: JSON.stringify({}),
       });
-      setMessage(bookingMessage, "Booking approved successfully.", "success");
+      showToast("Booking approved successfully.", "success");
       await refreshData();
     } catch (error) {
-      setMessage(bookingMessage, error.message, "error");
+      showToast(error.message, "error");
     }
     return;
   }
@@ -719,25 +900,90 @@ activeBookingTableBody.addEventListener("click", async (event) => {
     if (!confirmed) return;
     try {
       await api(`/api/bookings/${bookingId}`, { method: "DELETE" });
-      setMessage(bookingMessage, "Booking cancelled successfully.", "success");
+      showToast("Booking cancelled successfully.", "info");
       await refreshData();
     } catch (error) {
-      setMessage(bookingMessage, error.message, "error");
+      showToast(error.message, "error");
     }
   }
 });
 
 adminUsers.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-action='toggle-override']");
+  const button = event.target.closest("button[data-action]");
   if (!button) return;
   try {
-    await api(`/api/admin/users/${button.dataset.id}/override`, {
-      method: "POST",
-      body: JSON.stringify({ canEditAfter48h: button.dataset.value === "1" }),
-    });
+    if (button.dataset.action === "toggle-override") {
+      await api(`/api/admin/users/${button.dataset.id}/override`, {
+        method: "POST",
+        body: JSON.stringify({ canEditAfter48h: button.dataset.value === "1" }),
+      });
+      showToast("Override permission updated.", "success");
+    } else if (button.dataset.action === "reset-password") {
+      const temporaryPassword = window.prompt("Enter a temporary password for this user:");
+      if (!temporaryPassword) return;
+      await api(`/api/admin/users/${button.dataset.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ temporaryPassword }),
+      });
+      showToast("Temporary password set successfully.", "success");
+    } else if (button.dataset.action === "delete-user") {
+      const confirmed = window.confirm("Delete this unused user account?");
+      if (!confirmed) return;
+      await api(`/api/admin/users/${button.dataset.id}`, { method: "DELETE" });
+      showToast("User account soft-deleted successfully.", "success");
+    }
     await refreshData();
   } catch (error) {
-    setMessage(tableMessage, error.message, "error");
+    showToast(error.message, "error");
+  }
+});
+
+createUserForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setMessage(createUserMessage, "Creating user...");
+  try {
+    await api("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({
+        name: document.getElementById("newUserName").value,
+        email: document.getElementById("newUserEmail").value,
+        password: document.getElementById("newUserPassword").value,
+      }),
+    });
+    resetCreateUserForm();
+    showToast("New user account created successfully.", "success");
+    setMessage(createUserMessage, "");
+    await refreshData();
+  } catch (error) {
+    setMessage(createUserMessage, error.message, "error");
+  }
+});
+
+passwordForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setMessage(passwordMessage, "Updating password...");
+  try {
+    const payload = await api("/api/me/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        currentPassword: document.getElementById("currentPassword").value,
+        newPassword: document.getElementById("newPassword").value,
+        confirmPassword: document.getElementById("confirmPassword").value,
+      }),
+    });
+    state.currentUser = { ...state.currentUser, ...payload.user };
+    resetPasswordForm();
+    showToast("Password updated successfully.", "success");
+    setMessage(passwordMessage, "");
+    await refreshData();
+  } catch (error) {
+    setMessage(passwordMessage, error.message, "error");
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".slot-dropdown")) {
+    timeSlotMenuEl.classList.add("hidden");
   }
 });
 

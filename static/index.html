@@ -5,6 +5,116 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Istefadah Venue Booking</title>
     <link rel="stylesheet" href="/static/app.css" />
+    <style>
+      /* Corrected Print Media Queries */
+      @media print {
+        /* 1. Explicitly hide non-reporting blocks */
+        .hero-panel,
+        .topbar,
+        #loginView,
+        #passwordSection,
+        #bookingSection,
+        #logSection,
+        #adminSection,
+        #exportSection,
+        .table-actions,
+        .password-toggle-btn,
+        .message,
+        .hint {
+          display: none !important;
+        }
+
+        /* 2. Force outer container wrappers to stay visible */
+        html, body, .shell, .app-panel, #appView {
+          background: none !important;
+          color: #000 !important;
+          box-shadow: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          display: block !important;
+          overflow: visible !important;
+          visibility: visible !important;
+        }
+
+        /* 3. Force report sections to display and break cleanly */
+        #activeBookingsSection, 
+        #historySection {
+          display: block !important;
+          visibility: visible !important;
+          background: none !important;
+          box-shadow: none !important;
+          border: none !important;
+          margin-bottom: 40px !important;
+          width: 100% !important;
+          page-break-inside: avoid !important;
+        }
+
+        /* 4. Force HTML5 <details> element (History) to expand natively */
+        #historySection {
+          display: block !important;
+        }
+        #historySection summary {
+          display: none !important;
+        }
+        #historySection > div,
+        #historySection .table-wrap,
+        #historySection table {
+          display: table !important;
+          visibility: visible !important;
+        }
+
+        /* 5. Clean up sorting button headers so column text prints clearly */
+        button.sort-header {
+          display: inline-block !important;
+          border: none !important;
+          background: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          font: inherit !important;
+          font-weight: bold !important;
+          color: #000 !important;
+          cursor: default !important;
+        }
+        button.sort-header span {
+          display: none !important; /* Hide the arrow symbol */
+        }
+
+        /* 6. Hide the empty Actions column on the Active Bookings table */
+        #activeBookingsSection th:last-child,
+        #activeBookingsSection td:last-child {
+          display: none !important;
+        }
+
+        /* 7. Clean table and cell borders for ink-friendly output */
+        .table-wrap {
+          overflow: visible !important;
+        }
+        table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          margin-top: 15px !important;
+        }
+        tr {
+          page-break-inside: avoid !important;
+        }
+        th, td {
+          border: 1px solid #000 !important;
+          padding: 8px !important;
+          color: #000 !important;
+          background: none !important;
+          font-size: 11pt !important;
+          text-align: left !important;
+        }
+        th {
+          font-weight: bold !important;
+          background-color: #f2f2f2 !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    </style>
   </head>
   <body>
     <div class="shell">
@@ -17,7 +127,6 @@
             <span>Booking</span>
           </h1>
         </div>
-
       </aside>
 
       <main class="app-panel">
@@ -35,7 +144,13 @@
             </label>
             <label>
               Password
-              <input id="password" type="password" placeholder="Enter password" required />
+              <div class="password-wrapper" style="position: relative; display: block; width: 100%;">
+                <input id="password" type="password" placeholder="Enter password" required style="padding-right: 40px; width: 100%; box-sizing: border-box;" />
+                <button type="button" class="password-toggle-btn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 5;" aria-label="Toggle Password">
+                  <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: block;"><path d="M1 12s4-8 11-8 8 8 8 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.49 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
             </label>
             <button type="submit" class="primary-btn">Log in</button>
           </form>
@@ -57,7 +172,51 @@
             </div>
           </div>
 
-          <section class="card">
+          <section id="passwordSection" class="card">
+            <div class="section-head">
+              <div>
+                <p class="section-tag">Account Security</p>
+                <h2>Change password</h2>
+              </div>
+            </div>
+            <p id="passwordResetHint" class="hint hidden">Your password was reset by admin. Please change it now before using the app.</p>
+            <form id="passwordForm" class="grid-form admin-create-form">
+              <label>
+                Current password
+                <div class="password-wrapper" style="position: relative; display: block; width: 100%;">
+                  <input id="currentPassword" type="password" placeholder="Enter current password" required style="padding-right: 40px; width: 100%; box-sizing: border-box;" />
+                  <button type="button" class="password-toggle-btn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 5;" aria-label="Toggle Password">
+                    <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: block;"><path d="M1 12s4-8 11-8 8 8 8 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.49 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </label>
+              <label>
+                New password
+                <div class="password-wrapper" style="position: relative; display: block; width: 100%;">
+                  <input id="newPassword" type="password" placeholder="Enter new password" required style="padding-right: 40px; width: 100%; box-sizing: border-box;" />
+                  <button type="button" class="password-toggle-btn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 5;" aria-label="Toggle Password">
+                    <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: block;"><path d="M1 12s4-8 11-8 8 8 8 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.49 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </label>
+              <label>
+                Confirm password
+                <div class="password-wrapper" style="position: relative; display: block; width: 100%;">
+                  <input id="confirmPassword" type="password" placeholder="Re-enter new password" required style="padding-right: 40px; width: 100%; box-sizing: border-box;" />
+                  <button type="button" class="password-toggle-btn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 5;" aria-label="Toggle Password">
+                    <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: block;"><path d="M1 12s4-8 11-8 8 8 8 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.49 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </label>
+              <button type="submit" class="primary-btn">Update password</button>
+            </form>
+            <p id="passwordMessage" class="message"></p>
+          </section>
+
+          <section id="bookingSection" class="card">
             <div class="section-head">
               <div>
                 <p class="section-tag">Create Booking</p>
@@ -170,6 +329,12 @@
 
           <details class="card print-report" id="historySection">
             <summary>Previous booking history</summary>
+            <div class="section-head" style="margin-bottom: 15px;">
+              <div>
+                <p class="section-tag">History</p>
+                <h2>Previous booking history</h2>
+              </div>
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -189,8 +354,11 @@
             <p id="historyMessage" class="message"></p>
           </details>
 
-          <details class="card log-card">
+          <details class="card log-card" id="logSection">
             <summary>Activity logs</summary>
+            <div class="log-actions">
+              <button id="clearLogsBtn" class="danger-btn hidden" style="margin-top: 10px; margin-bottom: 10px;">Clear Activity Logs</button>
+            </div>
             <div id="notifications" class="notification-list log-list"></div>
           </details>
 
@@ -198,21 +366,44 @@
             <div class="section-head">
               <div>
                 <p class="section-tag">Admin Rights</p>
-                <h2>Post-48-hour permissions</h2>
+                <h2>User accounts and permissions</h2>
               </div>
             </div>
+            <form id="createUserForm" class="grid-form admin-create-form">
+              <label>
+                Full name
+                <input id="newUserName" type="text" placeholder="Enter full name" required />
+              </label>
+              <label>
+                Organisation email
+                <input id="newUserEmail" type="email" placeholder="name@istefadah.org" required />
+              </label>
+              <label>
+                Password
+                <div class="password-wrapper" style="position: relative; display: block; width: 100%;">
+                  <input id="newUserPassword" type="password" placeholder="Create password" required style="padding-right: 40px; width: 100%; box-sizing: border-box;" />
+                  <button type="button" class="password-toggle-btn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 5;" aria-label="Toggle Password">
+                    <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: block;"><path d="M1 12s4-8 11-8 8 8 8 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.49 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </label>
+              <button type="submit" class="primary-btn">Create user</button>
+            </form>
+            <p id="createUserMessage" class="message"></p>
             <div id="adminUsers" class="admin-users"></div>
           </section>
 
-          <details class="card export-menu">
+          <details class="card export-menu" id="exportSection">
             <summary>Reports and exports</summary>
             <div class="export-menu-list">
               <button data-format="excel" class="secondary-btn export-btn">Download Excel</button>
               <button data-format="word" class="secondary-btn export-btn">Download Word</button>
               <button data-format="csv" class="secondary-btn export-btn">Download CSV</button>
               <button id="printReportBtn" class="secondary-btn">Print Report</button>
+              <button id="adminClearBookingsBtn" class="danger-btn hidden">Wipe All Bookings</button>
             </div>
-            <p class="hint">Print shows the bookings report only. Open history first if you want it included.</p>
+            <p class="hint">Print and download exports cleanly separate your Active Bookings and Booking History.</p>
           </details>
         </section>
       </main>

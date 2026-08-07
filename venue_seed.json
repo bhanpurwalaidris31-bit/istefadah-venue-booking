@@ -1,0 +1,177 @@
+[
+  {
+    "name": "Rabvat jiblah",
+    "capacity": 250,
+    "details": "Jamea"
+  },
+  {
+    "name": "Faiz e Saiffee 1st floor",
+    "capacity": 300,
+    "details": "Qubba Mubaraka"
+  },
+  {
+    "name": "Faiz e Saiffee 2nd floor",
+    "capacity": 300,
+    "details": "Qubba Mubaraka"
+  },
+  {
+    "name": "Qadri hall",
+    "capacity": 400,
+    "details": "Begampura"
+  },
+  {
+    "name": "Madrasah Taiyebyah 1st basement",
+    "capacity": 500,
+    "details": "Begampura"
+  },
+  {
+    "name": "Faiz e Saiffee 3rd floor",
+    "capacity": 300,
+    "details": "Qubba Mubaraka"
+  },
+  {
+    "name": "Fatemi Masjid Niswan",
+    "capacity": 400,
+    "details": "Jamea"
+  },
+  {
+    "name": "Auditorium",
+    "capacity": 500,
+    "details": "Jamea"
+  },
+  {
+    "name": "Evan ul Barakaat",
+    "capacity": 1000,
+    "details": "Jamea"
+  },
+  {
+    "name": "Fatemi Masjid",
+    "capacity": 500,
+    "details": "Jamea"
+  },
+  {
+    "name": "Qism u Nawaderaat",
+    "capacity": 200,
+    "details": "Jamea"
+  },
+  {
+    "name": "Mahad uz Zahra Qa'at",
+    "capacity": 250,
+    "details": "Jamea"
+  },
+  {
+    "name": "Gurfa Mubaraka",
+    "capacity": 50,
+    "details": "Jamea"
+  },
+  {
+    "name": "Tabiq 4",
+    "capacity": 700,
+    "details": "Jamea"
+  },
+  {
+    "name": "Tabiq 5",
+    "capacity": 500,
+    "details": "Jamea"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 1",
+    "capacity": 1500,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 2",
+    "capacity": 1500,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 3",
+    "capacity": 700,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 4",
+    "capacity": 700,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 5",
+    "capacity": 700,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 6",
+    "capacity": 700,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 7",
+    "capacity": 1400,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 8",
+    "capacity": 800,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Khaimat ur riyadat Marquee 9",
+    "capacity": 800,
+    "details": "Khaimat ur riyazat"
+  },
+  {
+    "name": "Hadiaqat e Mufaddal Gr flr hall 1",
+    "capacity": 1000,
+    "details": "Begumwadi"
+  },
+  {
+    "name": "Hadiaqat e Mufaddal Gr flr hall 2",
+    "capacity": 1000,
+    "details": "Begumwadi"
+  },
+  {
+    "name": "Hadiaqat e Mufaddal first flr hall 1",
+    "capacity": 1000,
+    "details": "Begumwadi"
+  },
+  {
+    "name": "Hadiaqat e Mufaddal first flr hall 2",
+    "capacity": 1000,
+    "details": "Begumwadi"
+  },
+  {
+    "name": "Hadiaqat e Mufaddal second flr hall 1",
+    "capacity": 1000,
+    "details": "Begumwadi"
+  },
+  {
+    "name": "Hadiaqat e Mufaddal second flr hall 2",
+    "capacity": 1000,
+    "details": "Begumwadi"
+  },
+  {
+    "name": "Hadiaqat e Mufaddal third flr hall",
+    "capacity": 1000,
+    "details": "Begumwadi"
+  },
+  {
+    "name": "Husaina Hall, Husaini Manzil",
+    "capacity": 250,
+    "details": "Bilal Gali"
+  },
+  {
+    "name": "Masjid e Moazzam",
+    "capacity": 1500,
+    "details": "Masjid e Moazzam"
+  },
+  {
+    "name": "Class Room 413",
+    "capacity": 50,
+    "details": "Jamea"
+  },
+  {
+    "name": "Najmi Masjid",
+    "capacity": 1000,
+    "details": "Begampura"
+  }
+]

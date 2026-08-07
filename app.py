@@ -13,7 +13,8 @@ from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
-DB_PATH = BASE_DIR / "booking_app.db"
+DB_PATH = Path(os.getenv("ISTEFADAH_DB_PATH", str(BASE_DIR / "booking_app.db")))
+VENUE_SEED_PATH = BASE_DIR / "venue_seed.json"
 HOST = os.getenv("ISTEFADAH_HOST", "0.0.0.0" if os.getenv("PORT") else "127.0.0.1")
 PORT = int(os.getenv("PORT") or os.getenv("ISTEFADAH_PORT", "8000"))
 
@@ -50,7 +51,7 @@ TIME_SLOTS = [
     "22:30-23:00",
 ]
 
-VENUES = [
+FALLBACK_VENUES = [
     ("Main Auditorium", 300, "Stage, projector, central audio"),
     ("Conference Hall A", 80, "Boardroom seating, TV display"),
     ("Conference Hall B", 40, "Classroom seating, screen"),
@@ -66,6 +67,30 @@ USERS = [
 SESSIONS: dict[str, dict] = {}
 
 
+def load_seed_venues() -> list[tuple[str, int, str]]:
+    if not VENUE_SEED_PATH.exists():
+        return FALLBACK_VENUES
+    try:
+        rows = json.loads(VENUE_SEED_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return FALLBACK_VENUES
+
+    venues: list[tuple[str, int, str]] = []
+    for row in rows:
+        name = str(row.get("name", "")).strip()
+        details = str(row.get("details", "")).strip()
+        try:
+            capacity = int(row.get("capacity", 0))
+        except (TypeError, ValueError):
+            capacity = 0
+        if name and capacity > 0:
+            venues.append((name, capacity, details))
+    return venues or FALLBACK_VENUES
+
+
+VENUES = load_seed_venues()
+
+
 def now_utc() -> datetime:
     return datetime.now(UTC)
 
@@ -79,6 +104,7 @@ def parse_iso(value: str) -> datetime:
 
 
 def init_db() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         conn.executescript(
@@ -89,14 +115,18 @@ def init_db() -> None:
                 email TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,
                 role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
-                can_edit_after_48h INTEGER NOT NULL DEFAULT 0
+                can_edit_after_48h INTEGER NOT NULL DEFAULT 0,
+                password_reset_required INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                is_deleted INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS venues (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 capacity INTEGER NOT NULL,
-                details TEXT
+                details TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS bookings (
@@ -112,7 +142,7 @@ def init_db() -> None:
                 audience_details TEXT,
                 avit_requirements TEXT,
                 sitting_arrangements TEXT,
-                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'cancelled')),
+                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'completed', 'cancelled')),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 updated_by_user_id INTEGER,
@@ -135,62 +165,86 @@ def init_db() -> None:
             """
         )
 
-        booking_schema = conn.execute("PRAGMA table_info(bookings)").fetchall()
-        status_default = ""
-        for column in booking_schema:
-            if column["name"] == "status":
-                status_default = str(column["dflt_value"] or "")
-                break
-        if "'booked'" in status_default:
-            conn.executescript(
-                """
-                ALTER TABLE bookings RENAME TO bookings_old;
+        bookings_sql_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='bookings'").fetchone()
+        if bookings_sql_row:
+            bookings_sql = bookings_sql_row["sql"]
+            if "completed" not in bookings_sql:
+                print("[MIGRATION] 'completed' status missing from bookings CHECK constraint. Migrating table schema...", flush=True)
+                conn.executescript(
+                    """
+                    ALTER TABLE bookings RENAME TO bookings_old;
 
-                CREATE TABLE bookings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    booking_code TEXT NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    venue_id INTEGER NOT NULL,
-                    booking_date TEXT NOT NULL,
-                    time_slot TEXT NOT NULL,
-                    booked_by TEXT NOT NULL,
-                    purpose TEXT NOT NULL,
-                    audience_count INTEGER NOT NULL,
-                    audience_details TEXT,
-                    avit_requirements TEXT,
-                    sitting_arrangements TEXT,
-                    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'cancelled')),
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    updated_by_user_id INTEGER,
-                    FOREIGN KEY(user_id) REFERENCES users(id),
-                    FOREIGN KEY(venue_id) REFERENCES venues(id),
-                    FOREIGN KEY(updated_by_user_id) REFERENCES users(id)
-                );
+                    CREATE TABLE bookings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        booking_code TEXT NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        venue_id INTEGER NOT NULL,
+                        booking_date TEXT NOT NULL,
+                        time_slot TEXT NOT NULL,
+                        booked_by TEXT NOT NULL,
+                        purpose TEXT NOT NULL,
+                        audience_count INTEGER NOT NULL,
+                        audience_details TEXT,
+                        avit_requirements TEXT,
+                        sitting_arrangements TEXT,
+                        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'completed', 'cancelled')),
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        updated_by_user_id INTEGER,
+                        FOREIGN KEY(user_id) REFERENCES users(id),
+                        FOREIGN KEY(venue_id) REFERENCES venues(id),
+                        FOREIGN KEY(updated_by_user_id) REFERENCES users(id)
+                    );
 
-                INSERT INTO bookings (
-                    id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
-                    purpose, audience_count, audience_details, avit_requirements,
-                    sitting_arrangements, status, created_at, updated_at, updated_by_user_id
+                    INSERT INTO bookings (
+                        id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
+                        purpose, audience_count, audience_details, avit_requirements,
+                        sitting_arrangements, status, created_at, updated_at, updated_by_user_id
+                    )
+                    SELECT
+                        id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
+                        purpose, audience_count, audience_details, avit_requirements,
+                        sitting_arrangements,
+                        CASE 
+                            WHEN status = 'booked' THEN 'approved' 
+                            ELSE status 
+                        END,
+                        created_at, updated_at, updated_by_user_id
+                    FROM bookings_old;
+
+                    DROP TABLE bookings_old;
+
+                    CREATE INDEX IF NOT EXISTS idx_booking_slot
+                    ON bookings (booking_date, time_slot, venue_id, status);
+                    """
                 )
-                SELECT
-                    id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
-                    purpose, audience_count, audience_details, avit_requirements,
-                    sitting_arrangements,
-                    CASE WHEN status = 'booked' THEN 'approved' ELSE status END,
-                    created_at, updated_at, updated_by_user_id
-                FROM bookings_old;
+                print("[MIGRATION] Schema migration completed successfully.", flush=True)
 
-                DROP TABLE bookings_old;
+        booking_schema = conn.execute("PRAGMA table_info(bookings)").fetchall()
+        user_schema = conn.execute("PRAGMA table_info(users)").fetchall()
+        venue_schema = conn.execute("PRAGMA table_info(venues)").fetchall()
+        user_columns = {column["name"] for column in user_schema}
+        venue_columns = {column["name"] for column in venue_schema}
 
-                CREATE INDEX IF NOT EXISTS idx_booking_slot
-                ON bookings (booking_date, time_slot, venue_id, status);
-                """
-            )
+        if "password_reset_required" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0")
+        if "is_active" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        if "is_deleted" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0")
+        if "is_active" not in venue_columns:
+            conn.execute("ALTER TABLE venues ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
 
-        existing_users = {row["email"] for row in conn.execute("SELECT email FROM users")}
         for user in USERS:
-            if user[1] not in existing_users:
+            exists = conn.execute(
+                """
+                SELECT id FROM users 
+                WHERE email = ? OR email LIKE ?
+                """,
+                (user[1], f"deleted-%-{user[1]}"),
+            ).fetchone()
+
+            if not exists:
                 conn.execute(
                     """
                     INSERT INTO users (name, email, password, role, can_edit_after_48h)
@@ -199,14 +253,71 @@ def init_db() -> None:
                     user,
                 )
 
-        existing_venues = {row["name"] for row in conn.execute("SELECT name FROM venues")}
+        existing_venues = {
+            row["name"]: row["id"] for row in conn.execute("SELECT id, name FROM venues")
+        }
         for venue in VENUES:
             if venue[0] not in existing_venues:
                 conn.execute(
-                    "INSERT INTO venues (name, capacity, details) VALUES (?, ?, ?)",
+                    "INSERT INTO venues (name, capacity, details, is_active) VALUES (?, ?, ?, 1)",
                     venue,
                 )
+            else:
+                conn.execute(
+                    """
+                    UPDATE venues
+                    SET capacity = ?, details = ?, is_active = 1
+                    WHERE name = ?
+                    """,
+                    (venue[1], venue[2], venue[0]),
+                )
+
+        if VENUES:
+            placeholders = ", ".join("?" for _ in VENUES)
+            conn.execute(
+                f"UPDATE venues SET is_active = 0 WHERE name NOT IN ({placeholders})",
+                [venue[0] for venue in VENUES],
+            )
         conn.commit()
+
+
+def update_completed_bookings(conn: sqlite3.Connection) -> None:
+    now = datetime.now()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, booking_code, booking_date, time_slot, status
+            FROM bookings
+            WHERE status IN ('approved', 'pending')
+            """
+        ).fetchall()
+
+        for row in rows:
+            try:
+                booking_date = datetime.strptime(
+                    row["booking_date"], "%Y-%m-%d"
+                ).date()
+
+                end_time = row["time_slot"].split("-")[1].strip()
+                booking_end = datetime.strptime(
+                    f"{booking_date} {end_time}",
+                    "%Y-%m-%d %H:%M",
+                )
+
+                if booking_end <= now:
+                    conn.execute(
+                        """
+                        UPDATE bookings
+                        SET status = 'completed', updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (utc_iso(), row["id"]),
+                    )
+            except Exception:
+                continue
+        conn.commit()
+    except sqlite3.Error:
+        pass
 
 
 def db_connection() -> sqlite3.Connection:
@@ -239,7 +350,29 @@ def get_admin_ids(conn: sqlite3.Connection) -> list[int]:
     return [row["id"] for row in conn.execute("SELECT id FROM users WHERE role = 'admin'")]
 
 
+def serialize_user(row: sqlite3.Row, booking_count: int = 0, active_booking_count: int = 0) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "role": row["role"],
+        "canEditAfter48h": bool(row["can_edit_after_48h"]),
+        "passwordResetRequired": bool(row["password_reset_required"]),
+        "isActive": bool(row["is_active"]),
+        "isDeleted": bool(row["is_deleted"]),
+        "bookingCount": booking_count,
+        "activeBookingCount": active_booking_count,
+        "canDelete": row["role"] != "admin" and active_booking_count == 0,
+        "canToggleActive": row["role"] != "admin" and not bool(row["is_deleted"]),
+    }
+
+
+def user_must_reset_password(user: sqlite3.Row) -> bool:
+    return bool(user["password_reset_required"])
+
+
 def fetch_booking(conn: sqlite3.Connection, booking_id: int) -> sqlite3.Row | None:
+    update_completed_bookings(conn)
     return conn.execute(
         """
         SELECT b.*, v.name AS venue_name, v.capacity AS venue_capacity, u.name AS owner_name, u.email AS owner_email
@@ -304,6 +437,7 @@ def find_conflicts(
     dates: list[str],
     ignore_booking_id: int | None = None,
 ) -> list[dict]:
+    update_completed_bookings(conn)
     conflicts: list[dict] = []
     for booking_date in dates:
         query = """
@@ -351,6 +485,7 @@ def collect_slot_conflicts(
 
 
 def fetch_bookings(conn: sqlite3.Connection, user: sqlite3.Row | None = None) -> list[dict]:
+    update_completed_bookings(conn)
     query = """
         SELECT b.*, v.name AS venue_name, v.capacity AS venue_capacity, u.name AS owner_name, u.email AS owner_email
         FROM bookings b
@@ -366,6 +501,30 @@ def fetch_bookings(conn: sqlite3.Connection, user: sqlite3.Row | None = None) ->
 
 
 def render_office_table(bookings: list[dict], title: str) -> str:
+    active_bookings = [b for b in bookings if b["status"] in ("pending", "approved")]
+    history_bookings = [b for b in bookings if b["status"] in ("completed", "cancelled")]
+
+    def make_rows(items: list[dict]) -> str:
+        if not items:
+            return "<tr><td colspan='8'>No bookings found.</td></tr>"
+        rows = []
+        for booking in items:
+            rows.append(
+                f"""
+                <tr>
+                  <td>{booking['bookingCode']}</td>
+                  <td>{booking['bookingDate']}</td>
+                  <td>{booking['timeSlot']}</td>
+                  <td>{booking['venueName']}</td>
+                  <td>{booking['bookedBy']}</td>
+                  <td>{booking['purpose']}</td>
+                  <td>{booking['audienceCount']}</td>
+                  <td>{booking['status']}</td>
+                </tr>
+                """
+            )
+        return "".join(rows)
+
     header = """
     <tr>
       <th>Booking Code</th>
@@ -378,37 +537,27 @@ def render_office_table(bookings: list[dict], title: str) -> str:
       <th>Status</th>
     </tr>
     """
-    rows = []
-    for booking in bookings:
-        rows.append(
-            f"""
-            <tr>
-              <td>{booking['bookingCode']}</td>
-              <td>{booking['bookingDate']}</td>
-              <td>{booking['timeSlot']}</td>
-              <td>{booking['venueName']}</td>
-              <td>{booking['bookedBy']}</td>
-              <td>{booking['purpose']}</td>
-              <td>{booking['audienceCount']}</td>
-              <td>{booking['status']}</td>
-            </tr>
-            """
-        )
+
     return f"""
     <html>
       <head>
         <meta charset="utf-8">
         <style>
           body {{ font-family: Calibri, Arial, sans-serif; padding: 24px; }}
-          h1 {{ color: #123c37; }}
-          table {{ border-collapse: collapse; width: 100%; }}
+          h1 {{ color: #123c37; margin-bottom: 20px; }}
+          h2 {{ color: #1e635b; margin-top: 35px; margin-bottom: 10px; font-size: 16px; }}
+          table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
           th, td {{ border: 1px solid #93ada8; padding: 8px; text-align: left; }}
-          th {{ background: #dff0eb; }}
+          th {{ background: #dff0eb; font-weight: bold; }}
         </style>
       </head>
       <body>
         <h1>{title}</h1>
-        <table>{header}{''.join(rows)}</table>
+        <h2>Active Bookings (Pending &amp; Approved)</h2>
+        <table>{header}{make_rows(active_bookings)}</table>
+        
+        <h2>Previous Booking History (Completed &amp; Cancelled)</h2>
+        <table>{header}{make_rows(history_bookings)}</table>
       </body>
     </html>
     """
@@ -440,6 +589,9 @@ class AppHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/notifications":
             self.handle_get_notifications()
             return
+        if parsed.path == "/api/me":
+            self.handle_get_current_user()
+            return
         if parsed.path == "/api/export":
             self.handle_export(parsed.query)
             return
@@ -453,8 +605,23 @@ class AppHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/logout":
             self.handle_logout()
             return
+        if parsed.path == "/api/me/change-password":
+            self.handle_change_password()
+            return
         if parsed.path == "/api/bookings":
             self.handle_create_bookings()
+            return
+        if parsed.path == "/api/admin/users":
+            self.handle_create_user()
+            return
+        if parsed.path == "/api/admin/bookings/clear":
+            self.handle_clear_bookings()
+            return
+        if parsed.path.startswith("/api/admin/users/") and parsed.path.endswith("/active"):
+            self.handle_toggle_user_active(parsed.path)
+            return
+        if parsed.path.startswith("/api/admin/users/") and parsed.path.endswith("/reset-password"):
+            self.handle_admin_reset_password(parsed.path)
             return
         if parsed.path.startswith("/api/bookings/") and parsed.path.endswith("/approve"):
             self.handle_approve_booking(parsed.path)
@@ -473,6 +640,12 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/admin/logs":
+            self.handle_clear_logs()
+            return
+        if parsed.path.startswith("/api/admin/users/"):
+            self.handle_delete_user(parsed.path)
+            return
         if parsed.path.startswith("/api/bookings/"):
             self.handle_delete_booking(parsed.path)
             return
@@ -509,10 +682,26 @@ class AppHandler(BaseHTTPRequestHandler):
         if not user:
             self.json_response({"error": "Session user not found."}, HTTPStatus.UNAUTHORIZED)
             return None
+        if bool(user["is_deleted"]):
+            self.json_response({"error": "This account has been deleted."}, HTTPStatus.FORBIDDEN)
+            return None
+        return user
+
+    def require_ready_user(self) -> sqlite3.Row | None:
+        user = self.require_auth()
+        if not user:
+            return None
+        if user_must_reset_password(user):
+            self.json_response(
+                {"error": "Please reset your password first before using the app."},
+                HTTPStatus.FORBIDDEN,
+            )
+            return None
         return user
 
     def handle_bootstrap(self) -> None:
         with db_connection() as conn:
+            update_completed_bookings(conn)
             venues = [
                 {
                     "id": row["id"],
@@ -520,17 +709,32 @@ class AppHandler(BaseHTTPRequestHandler):
                     "capacity": row["capacity"],
                     "details": row["details"],
                 }
-                for row in conn.execute("SELECT * FROM venues ORDER BY capacity DESC, name ASC")
+                for row in conn.execute(
+                    "SELECT * FROM venues WHERE is_active = 1 ORDER BY capacity DESC, name ASC"
+                )
             ]
             users = [
-                {
-                    "id": row["id"],
-                    "name": row["name"],
-                    "email": row["email"],
-                    "role": row["role"],
-                    "canEditAfter48h": bool(row["can_edit_after_48h"]),
-                }
-                for row in conn.execute("SELECT id, name, email, role, can_edit_after_48h FROM users ORDER BY role DESC, name ASC")
+                serialize_user(row, row["booking_count"], row["active_booking_count"] or 0)
+                for row in conn.execute(
+                    """
+                    SELECT
+                        u.id,
+                        u.name,
+                        u.email,
+                        u.role,
+                        u.can_edit_after_48h,
+                        u.password_reset_required,
+                        u.is_active,
+                        u.is_deleted,
+                        COUNT(b.id) AS booking_count,
+                        SUM(CASE WHEN b.status IN ('pending', 'approved') THEN 1 ELSE 0 END) AS active_booking_count
+                    FROM users u
+                    LEFT JOIN bookings b ON b.user_id = u.id
+                    WHERE u.is_deleted = 0
+                    GROUP BY u.id, u.name, u.email, u.role, u.can_edit_after_48h, u.password_reset_required, u.is_active, u.is_deleted
+                    ORDER BY u.role DESC, u.name ASC
+                    """
+                )
             ]
         self.json_response(
             {
@@ -551,8 +755,27 @@ class AppHandler(BaseHTTPRequestHandler):
         email = payload.get("email", "").strip().lower()
         password = payload.get("password", "").strip()
         with db_connection() as conn:
+            inactive_user = conn.execute(
+                """
+                SELECT id, is_deleted, is_active
+                FROM users
+                WHERE email = ?
+                """,
+                (email,),
+            ).fetchone()
+            if inactive_user:
+                if bool(inactive_user["is_deleted"]):
+                    self.json_response({"error": "This account has been deleted."}, HTTPStatus.FORBIDDEN)
+                    return
+                if not bool(inactive_user["is_active"]):
+                    self.json_response({"error": "This account is deactivated. Please contact admin."}, HTTPStatus.FORBIDDEN)
+                    return
             user = conn.execute(
-                "SELECT id, name, email, role, can_edit_after_48h FROM users WHERE email = ? AND password = ?",
+                """
+                SELECT id, name, email, role, can_edit_after_48h, password_reset_required, is_active, is_deleted
+                FROM users
+                WHERE email = ? AND password = ? AND is_active = 1 AND is_deleted = 0
+                """,
                 (email, password),
             ).fetchone()
         if not user:
@@ -569,6 +792,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     "email": user["email"],
                     "role": user["role"],
                     "canEditAfter48h": bool(user["can_edit_after_48h"]),
+                    "passwordResetRequired": bool(user["password_reset_required"]),
                 },
             }
         )
@@ -578,15 +802,21 @@ class AppHandler(BaseHTTPRequestHandler):
         SESSIONS.pop(token, None)
         self.json_response({"success": True})
 
-    def handle_get_bookings(self) -> None:
+    def handle_get_current_user(self) -> None:
         user = self.require_auth()
+        if not user:
+            return
+        self.json_response({"user": serialize_user(user)})
+
+    def handle_get_bookings(self) -> None:
+        user = self.require_ready_user()
         if not user:
             return
         with db_connection() as conn:
             self.json_response({"bookings": fetch_bookings(conn, user)})
 
     def handle_get_notifications(self) -> None:
-        user = self.require_auth()
+        user = self.require_ready_user()
         if not user:
             return
         with db_connection() as conn:
@@ -597,7 +827,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.json_response({"notifications": [serialize_notification(row) for row in rows]})
 
     def handle_create_bookings(self) -> None:
-        user = self.require_auth()
+        user = self.require_ready_user()
         if not user:
             return
 
@@ -632,7 +862,11 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         with db_connection() as conn:
-            venue = conn.execute("SELECT * FROM venues WHERE id = ?", (venue_id,)).fetchone()
+            update_completed_bookings(conn)
+            venue = conn.execute(
+                "SELECT * FROM venues WHERE id = ? AND is_active = 1",
+                (venue_id,),
+            ).fetchone()
             if not venue:
                 self.json_response({"error": "Venue not found."}, HTTPStatus.BAD_REQUEST)
                 return
@@ -743,13 +977,14 @@ class AppHandler(BaseHTTPRequestHandler):
         )
 
     def handle_update_booking(self, path: str) -> None:
-        user = self.require_auth()
+        user = self.require_ready_user()
         if not user:
             return
         booking_id = int(path.rsplit("/", 1)[-1])
         payload = parse_body(self)
 
         with db_connection() as conn:
+            update_completed_bookings(conn)
             booking = fetch_booking(conn, booking_id)
             if not booking:
                 self.json_response({"error": "Booking not found."}, HTTPStatus.NOT_FOUND)
@@ -774,7 +1009,10 @@ class AppHandler(BaseHTTPRequestHandler):
             new_sitting = payload.get("sittingArrangements", json.loads(booking["sitting_arrangements"] or "[]"))
             new_booked_by = payload.get("bookedBy", booking["booked_by"]).strip()
 
-            venue = conn.execute("SELECT * FROM venues WHERE id = ?", (new_venue_id,)).fetchone()
+            venue = conn.execute(
+                "SELECT * FROM venues WHERE id = ? AND is_active = 1",
+                (new_venue_id,),
+            ).fetchone()
             if not venue:
                 self.json_response({"error": "Venue not found."}, HTTPStatus.BAD_REQUEST)
                 return
@@ -834,7 +1072,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.json_response({"message": "Booking updated successfully.", "booking": serialize_booking(refreshed)})
 
     def handle_delete_booking(self, path: str) -> None:
-        user = self.require_auth()
+        user = self.require_ready_user()
         if not user:
             return
         booking_id = int(path.rsplit("/", 1)[-1])
@@ -869,7 +1107,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.json_response({"message": "Booking cancelled successfully."})
 
     def handle_approve_booking(self, path: str) -> None:
-        user = self.require_auth()
+        user = self.require_ready_user()
         if not user:
             return
         if user["role"] != "admin":
@@ -908,7 +1146,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.json_response({"message": "Booking approved successfully.", "booking": serialize_booking(refreshed)})
 
     def handle_toggle_override(self, path: str) -> None:
-        user = self.require_auth()
+        user = self.require_ready_user()
         if not user:
             return
         if user["role"] != "admin":
@@ -934,8 +1172,257 @@ class AppHandler(BaseHTTPRequestHandler):
             conn.commit()
         self.json_response({"message": "Override updated successfully."})
 
-    def handle_export(self, query: str) -> None:
+    def handle_toggle_user_active(self, path: str) -> None:
+        user = self.require_ready_user()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+
+        user_id = int(path.split("/")[4])
+        payload = parse_body(self)
+        is_active = 1 if payload.get("isActive", False) else 0
+        with db_connection() as conn:
+            target = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not target:
+                self.json_response({"error": "User not found."}, HTTPStatus.NOT_FOUND)
+                return
+            if target["role"] == "admin":
+                self.json_response({"error": "Admin accounts cannot be deactivated here."}, HTTPStatus.BAD_REQUEST)
+                return
+            if bool(target["is_deleted"]):
+                self.json_response({"error": "Deleted users cannot be reactivated."}, HTTPStatus.BAD_REQUEST)
+                return
+            conn.execute(
+                "UPDATE users SET is_active = ? WHERE id = ?",
+                (is_active, user_id),
+            )
+            add_notification(
+                conn,
+                user_id,
+                f"Admin {'activated' if is_active else 'deactivated'} your account.",
+            )
+            conn.commit()
+        self.json_response({"message": "User status updated successfully."})
+
+    def handle_create_user(self) -> None:
+        user = self.require_ready_user()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+
+        payload = parse_body(self)
+        name = payload.get("name", "").strip()
+        email = payload.get("email", "").strip().lower()
+        password = payload.get("password", "").strip()
+
+        if not name:
+            self.json_response({"error": "Full name is required."}, HTTPStatus.BAD_REQUEST)
+            return
+        if not email or "@" not in email:
+            self.json_response({"error": "A valid email is required."}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(password) < 4:
+            self.json_response({"error": "Password must be at least 4 characters."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        with db_connection() as conn:
+            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+            if existing:
+                self.json_response({"error": "A user with this email already exists."}, HTTPStatus.CONFLICT)
+                return
+
+            cursor = conn.execute(
+                """
+                INSERT INTO users (name, email, password, role, can_edit_after_48h, password_reset_required)
+                VALUES (?, ?, ?, 'user', 0, 0)
+                """,
+                (name, email, password),
+            )
+            new_user_id = cursor.lastrowid
+            add_notification(
+                conn,
+                new_user_id,
+                f"Your account has been created by admin {user['name']}.",
+            )
+            conn.commit()
+            created_user = conn.execute(
+                """
+                SELECT id, name, email, role, can_edit_after_48h, password_reset_required
+                FROM users WHERE id = ?
+                """,
+                (new_user_id,),
+            ).fetchone()
+
+        self.json_response(
+            {
+                "message": "User created successfully.",
+                "user": serialize_user(created_user),
+            },
+            HTTPStatus.CREATED,
+        )
+
+    def handle_change_password(self) -> None:
         user = self.require_auth()
+        if not user:
+            return
+
+        payload = parse_body(self)
+        current_password = payload.get("currentPassword", "").strip()
+        new_password = payload.get("newPassword", "").strip()
+        confirm_password = payload.get("confirmPassword", "").strip()
+
+        if current_password != user["password"]:
+            self.json_response({"error": "Current password is incorrect."}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(new_password) < 4:
+            self.json_response({"error": "New password must be at least 4 characters."}, HTTPStatus.BAD_REQUEST)
+            return
+        if new_password != confirm_password:
+            self.json_response({"error": "New password and confirm password do not match."}, HTTPStatus.BAD_REQUEST)
+            return
+        if new_password == current_password:
+            self.json_response({"error": "Please choose a different new password."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        with db_connection() as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET password = ?, password_reset_required = 0
+                WHERE id = ?
+                """,
+                (new_password, user["id"]),
+            )
+            add_notification(conn, user["id"], "Your password was changed successfully.")
+            conn.commit()
+            refreshed = conn.execute(
+                """
+                SELECT id, name, email, role, can_edit_after_48h, password_reset_required
+                FROM users WHERE id = ?
+                """,
+                (user["id"],),
+            ).fetchone()
+        self.json_response({"message": "Password changed successfully.", "user": serialize_user(refreshed)})
+
+    def handle_admin_reset_password(self, path: str) -> None:
+        user = self.require_ready_user()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+
+        user_id = int(path.split("/")[4])
+        payload = parse_body(self)
+        temporary_password = payload.get("temporaryPassword", "").strip()
+        if len(temporary_password) < 4:
+            self.json_response({"error": "Temporary password must be at least 4 characters."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        with db_connection() as conn:
+            target = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not target:
+                self.json_response({"error": "User not found."}, HTTPStatus.NOT_FOUND)
+                return
+            if target["role"] == "admin":
+                self.json_response({"error": "Admin accounts cannot be reset from this panel."}, HTTPStatus.BAD_REQUEST)
+                return
+            conn.execute(
+                """
+                UPDATE users
+                SET password = ?, password_reset_required = 1
+                WHERE id = ?
+                """,
+                (temporary_password, user_id),
+            )
+            add_notification(
+                conn,
+                user_id,
+                "Admin reset your password. Please log in with the temporary password and change it immediately.",
+            )
+            conn.commit()
+        self.json_response({"message": "Temporary password set. User must change it after login."})
+
+    def handle_delete_user(self, path: str) -> None:
+        user = self.require_ready_user()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+
+        user_id = int(path.rsplit("/", 1)[-1])
+        if user_id == user["id"]:
+            self.json_response({"error": "You cannot delete your own account."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        with db_connection() as conn:
+            update_completed_bookings(conn)
+            
+            target = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not target:
+                self.json_response({"error": "User not found."}, HTTPStatus.NOT_FOUND)
+                return
+            if target["role"] == "admin":
+                self.json_response({"error": "Admin accounts cannot be deleted here."}, HTTPStatus.BAD_REQUEST)
+                return
+            active_booking_count = conn.execute(
+                """
+                SELECT COUNT(*) AS booking_count
+                FROM bookings
+                WHERE user_id = ? AND status IN ('pending', 'approved')
+                """,
+                (user_id,),
+            ).fetchone()["booking_count"]
+            if active_booking_count > 0:
+                self.json_response(
+                    {"error": "This user has active bookings, so deletion is not allowed."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            archived_email = f"deleted-{user_id}-{target['email']}"
+            archived_name = f"{target['name']} (Deleted)"
+            conn.execute(
+                """
+                UPDATE users
+                SET is_active = 0, is_deleted = 1, email = ?, name = ?, password_reset_required = 0
+                WHERE id = ?
+                """,
+                (archived_email, archived_name, user_id),
+            )
+            conn.commit()
+        self.json_response({"message": "User deleted from active use successfully."})
+
+    def handle_clear_logs(self) -> None:
+        user = self.require_ready_user()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+        with db_connection() as conn:
+            conn.execute("DELETE FROM notifications")
+            conn.commit()
+        self.json_response({"message": "Activity logs cleared successfully."})
+
+    def handle_clear_bookings(self) -> None:
+        user = self.require_ready_user()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+        with db_connection() as conn:
+            conn.execute("DELETE FROM bookings")
+            conn.commit()
+        self.json_response({"message": "All database bookings cleared successfully."})
+
+    def handle_export(self, query: str) -> None:
+        user = self.require_ready_user()
         if not user:
             return
         params = parse_qs(query)
@@ -946,8 +1433,13 @@ class AppHandler(BaseHTTPRequestHandler):
         if export_format == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
+            
+            active_bookings = [b for b in bookings if b["status"] in ("pending", "approved")]
+            history_bookings = [b for b in bookings if b["status"] in ("completed", "cancelled")]
+
+            writer.writerow(["--- ACTIVE BOOKINGS (PENDING & APPROVED) ---"])
             writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Status"])
-            for booking in bookings:
+            for booking in active_bookings:
                 writer.writerow(
                     [
                         booking["bookingCode"],
@@ -960,6 +1452,24 @@ class AppHandler(BaseHTTPRequestHandler):
                         booking["status"],
                     ]
                 )
+            
+            writer.writerow([])
+            writer.writerow(["--- PREVIOUS BOOKING HISTORY (COMPLETED & CANCELLED) ---"])
+            writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Status"])
+            for booking in history_bookings:
+                writer.writerow(
+                    [
+                        booking["bookingCode"],
+                        booking["bookingDate"],
+                        booking["timeSlot"],
+                        booking["venueName"],
+                        booking["bookedBy"],
+                        booking["purpose"],
+                        booking["audienceCount"],
+                        booking["status"],
+                    ]
+                )
+
             data = output.getvalue().encode("utf-8")
             filename = "istefadah-bookings.csv"
             content_type = "text/csv; charset=utf-8"
@@ -1007,3 +1517,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    

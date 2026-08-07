@@ -410,6 +410,16 @@ button:hover {
   gap: 12px;
 }
 
+.admin-create-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.admin-create-form label {
+  min-width: 0;
+}
+
 .export-menu summary {
   cursor: pointer;
   font-weight: 600;
@@ -608,6 +618,10 @@ th {
   .tiny-field {
     grid-column: span 1;
     max-width: none;
+  }
+
+  .admin-create-form {
+    grid-template-columns: 1fr;
   }
 }
 

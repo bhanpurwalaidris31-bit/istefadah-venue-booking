@@ -1,1 +1,2 @@
 # No external packages are required for this starter app.
+psycopg2-binary
