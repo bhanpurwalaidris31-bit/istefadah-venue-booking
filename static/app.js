@@ -990,3 +990,10 @@ document.addEventListener("click", (event) => {
 bootstrap().catch((error) => {
   setMessage(loginMessage, error.message, "error");
 });
+
+window.addEventListener("beforeunload", (event) => {
+  if (state.token) {
+    event.preventDefault();
+    event.returnValue = ""; // Standard trigger required by modern browsers to show the confirmation box
+  }
+});
