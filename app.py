@@ -3,17 +3,19 @@ import io
 import json
 import os
 import secrets
-import sqlite3
+import sqlite3  # Kept in imports in case any helper references it, but psycopg2 is used.
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+# Import PostgreSQL drivers
+import psycopg2
+import psycopg2.extras
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
-DB_PATH = Path(os.getenv("ISTEFADAH_DB_PATH", str(BASE_DIR / "booking_app.db")))
 VENUE_SEED_PATH = BASE_DIR / "venue_seed.json"
 HOST = os.getenv("ISTEFADAH_HOST", "0.0.0.0" if os.getenv("PORT") else "127.0.0.1")
 PORT = int(os.getenv("PORT") or os.getenv("ISTEFADAH_PORT", "8000"))
@@ -103,18 +105,61 @@ def parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
+# Connection wrapper to make PostgreSQL connections act like SQLite
+class PostgresConnectionWrapper:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def execute(self, sql, params=None):
+        # Convert SQLite ? placeholders to PostgreSQL %s placeholders
+        sql = sql.replace("?", "%s")
+        cur = self.conn.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def commit(self):
+        self.conn.commit()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def close(self):
+        self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+
+def db_connection() -> PostgresConnectionWrapper:
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise ValueError("DATABASE_URL environment variable is missing! Please configure it in your Render settings.")
+    
+    # Render's database strings often start with postgres://, but Python's psycopg2 prefers postgresql://
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+        
+    raw_conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.DictCursor)
+    return PostgresConnectionWrapper(raw_conn)
+
+
 def init_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        conn.executescript(
+    with db_connection() as conn:
+        conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                role VARCHAR(50) NOT NULL CHECK(role IN ('admin', 'user')),
                 can_edit_after_48h INTEGER NOT NULL DEFAULT 0,
                 password_reset_required INTEGER NOT NULL DEFAULT 0,
                 is_active INTEGER NOT NULL DEFAULT 1,
@@ -122,29 +167,29 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS venues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE,
                 capacity INTEGER NOT NULL,
                 details TEXT,
                 is_active INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                booking_code TEXT NOT NULL,
+                id SERIAL PRIMARY KEY,
+                booking_code VARCHAR(100) NOT NULL,
                 user_id INTEGER NOT NULL,
                 venue_id INTEGER NOT NULL,
-                booking_date TEXT NOT NULL,
-                time_slot TEXT NOT NULL,
-                booked_by TEXT NOT NULL,
-                purpose TEXT NOT NULL,
+                booking_date VARCHAR(100) NOT NULL,
+                time_slot VARCHAR(100) NOT NULL,
+                booked_by VARCHAR(255) NOT NULL,
+                purpose VARCHAR(255) NOT NULL,
                 audience_count INTEGER NOT NULL,
                 audience_details TEXT,
                 avit_requirements TEXT,
                 sitting_arrangements TEXT,
-                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'completed', 'cancelled')),
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
+                status VARCHAR(100) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'completed', 'cancelled')),
+                created_at VARCHAR(100) NOT NULL,
+                updated_at VARCHAR(100) NOT NULL,
                 updated_by_user_id INTEGER,
                 FOREIGN KEY(user_id) REFERENCES users(id),
                 FOREIGN KEY(venue_id) REFERENCES venues(id),
@@ -152,10 +197,10 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS notifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 message TEXT NOT NULL,
-                created_at TEXT NOT NULL,
+                created_at VARCHAR(100) NOT NULL,
                 is_read INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             );
@@ -165,81 +210,11 @@ def init_db() -> None:
             """
         )
 
-        bookings_sql_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='bookings'").fetchone()
-        if bookings_sql_row:
-            bookings_sql = bookings_sql_row["sql"]
-            if "completed" not in bookings_sql:
-                print("[MIGRATION] 'completed' status missing from bookings CHECK constraint. Migrating table schema...", flush=True)
-                conn.executescript(
-                    """
-                    ALTER TABLE bookings RENAME TO bookings_old;
-
-                    CREATE TABLE bookings (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        booking_code TEXT NOT NULL,
-                        user_id INTEGER NOT NULL,
-                        venue_id INTEGER NOT NULL,
-                        booking_date TEXT NOT NULL,
-                        time_slot TEXT NOT NULL,
-                        booked_by TEXT NOT NULL,
-                        purpose TEXT NOT NULL,
-                        audience_count INTEGER NOT NULL,
-                        audience_details TEXT,
-                        avit_requirements TEXT,
-                        sitting_arrangements TEXT,
-                        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'completed', 'cancelled')),
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL,
-                        updated_by_user_id INTEGER,
-                        FOREIGN KEY(user_id) REFERENCES users(id),
-                        FOREIGN KEY(venue_id) REFERENCES venues(id),
-                        FOREIGN KEY(updated_by_user_id) REFERENCES users(id)
-                    );
-
-                    INSERT INTO bookings (
-                        id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
-                        purpose, audience_count, audience_details, avit_requirements,
-                        sitting_arrangements, status, created_at, updated_at, updated_by_user_id
-                    )
-                    SELECT
-                        id, booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
-                        purpose, audience_count, audience_details, avit_requirements,
-                        sitting_arrangements,
-                        CASE 
-                            WHEN status = 'booked' THEN 'approved' 
-                            ELSE status 
-                        END,
-                        created_at, updated_at, updated_by_user_id
-                    FROM bookings_old;
-
-                    DROP TABLE bookings_old;
-
-                    CREATE INDEX IF NOT EXISTS idx_booking_slot
-                    ON bookings (booking_date, time_slot, venue_id, status);
-                    """
-                )
-                print("[MIGRATION] Schema migration completed successfully.", flush=True)
-
-        booking_schema = conn.execute("PRAGMA table_info(bookings)").fetchall()
-        user_schema = conn.execute("PRAGMA table_info(users)").fetchall()
-        venue_schema = conn.execute("PRAGMA table_info(venues)").fetchall()
-        user_columns = {column["name"] for column in user_schema}
-        venue_columns = {column["name"] for column in venue_schema}
-
-        if "password_reset_required" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0")
-        if "is_active" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-        if "is_deleted" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0")
-        if "is_active" not in venue_columns:
-            conn.execute("ALTER TABLE venues ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-
         for user in USERS:
             exists = conn.execute(
                 """
                 SELECT id FROM users 
-                WHERE email = ? OR email LIKE ?
+                WHERE email = %s OR email LIKE %s
                 """,
                 (user[1], f"deleted-%-{user[1]}"),
             ).fetchone()
@@ -248,7 +223,7 @@ def init_db() -> None:
                 conn.execute(
                     """
                     INSERT INTO users (name, email, password, role, can_edit_after_48h)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     user,
                 )
@@ -259,29 +234,29 @@ def init_db() -> None:
         for venue in VENUES:
             if venue[0] not in existing_venues:
                 conn.execute(
-                    "INSERT INTO venues (name, capacity, details, is_active) VALUES (?, ?, ?, 1)",
+                    "INSERT INTO venues (name, capacity, details, is_active) VALUES (%s, %s, %s, 1)",
                     venue,
                 )
             else:
                 conn.execute(
                     """
                     UPDATE venues
-                    SET capacity = ?, details = ?, is_active = 1
-                    WHERE name = ?
+                    SET capacity = %s, details = %s, is_active = 1
+                    WHERE name = %s
                     """,
                     (venue[1], venue[2], venue[0]),
                 )
 
         if VENUES:
-            placeholders = ", ".join("?" for _ in VENUES)
+            placeholders = ", ".join("%s" for _ in VENUES)
             conn.execute(
                 f"UPDATE venues SET is_active = 0 WHERE name NOT IN ({placeholders})",
                 [venue[0] for venue in VENUES],
             )
-        conn.commit()
 
 
-def update_completed_bookings(conn: sqlite3.Connection) -> None:
+def update_completed_bookings(conn: PostgresConnectionWrapper) -> None:
+    """Automatically mark finished approved/pending bookings as completed."""
     now = datetime.now()
     try:
         rows = conn.execute(
@@ -308,25 +283,32 @@ def update_completed_bookings(conn: sqlite3.Connection) -> None:
                     conn.execute(
                         """
                         UPDATE bookings
-                        SET status = 'completed', updated_at = ?
-                        WHERE id = ?
+                        SET status = 'completed', updated_at = %s
+                        WHERE id = %s
                         """,
                         (utc_iso(), row["id"]),
                     )
             except Exception:
                 continue
         conn.commit()
-    except sqlite3.Error:
+    except Exception:
         pass
 
 
-def db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def db_connection() -> PostgresConnectionWrapper:
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise ValueError("DATABASE_URL environment variable is missing! Please configure it in your Render settings.")
+    
+    # Render's database strings often start with postgres://, but Python's psycopg2 prefers postgresql://
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+        
+    raw_conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.DictCursor)
+    return PostgresConnectionWrapper(raw_conn)
 
 
-def user_can_manage_booking(actor: sqlite3.Row, booking: sqlite3.Row) -> bool:
+def user_can_manage_booking(actor: dict, booking: dict) -> bool:
     if actor["role"] == "admin":
         return True
     if actor["id"] != booking["user_id"]:
@@ -339,18 +321,18 @@ def user_can_manage_booking(actor: sqlite3.Row, booking: sqlite3.Row) -> bool:
     return bool(actor["can_edit_after_48h"])
 
 
-def add_notification(conn: sqlite3.Connection, user_id: int, message: str) -> None:
+def add_notification(conn: PostgresConnectionWrapper, user_id: int, message: str) -> None:
     conn.execute(
-        "INSERT INTO notifications (user_id, message, created_at) VALUES (?, ?, ?)",
+        "INSERT INTO notifications (user_id, message, created_at) VALUES (%s, %s, %s)",
         (user_id, message, utc_iso()),
     )
 
 
-def get_admin_ids(conn: sqlite3.Connection) -> list[int]:
+def get_admin_ids(conn: PostgresConnectionWrapper) -> list[int]:
     return [row["id"] for row in conn.execute("SELECT id FROM users WHERE role = 'admin'")]
 
 
-def serialize_user(row: sqlite3.Row, booking_count: int = 0, active_booking_count: int = 0) -> dict:
+def serialize_user(row: dict, booking_count: int = 0, active_booking_count: int = 0) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -367,11 +349,11 @@ def serialize_user(row: sqlite3.Row, booking_count: int = 0, active_booking_coun
     }
 
 
-def user_must_reset_password(user: sqlite3.Row) -> bool:
+def user_must_reset_password(user: dict) -> bool:
     return bool(user["password_reset_required"])
 
 
-def fetch_booking(conn: sqlite3.Connection, booking_id: int) -> sqlite3.Row | None:
+def fetch_booking(conn: PostgresConnectionWrapper, booking_id: int) -> dict | None:
     update_completed_bookings(conn)
     return conn.execute(
         """
@@ -379,13 +361,13 @@ def fetch_booking(conn: sqlite3.Connection, booking_id: int) -> sqlite3.Row | No
         FROM bookings b
         JOIN venues v ON v.id = b.venue_id
         JOIN users u ON u.id = b.user_id
-        WHERE b.id = ?
+        WHERE b.id = %s
         """,
         (booking_id,),
     ).fetchone()
 
 
-def serialize_booking(row: sqlite3.Row) -> dict:
+def serialize_booking(row: dict) -> dict:
     return {
         "id": row["id"],
         "bookingCode": row["booking_code"],
@@ -409,7 +391,7 @@ def serialize_booking(row: sqlite3.Row) -> dict:
     }
 
 
-def serialize_notification(row: sqlite3.Row) -> dict:
+def serialize_notification(row: dict) -> dict:
     return {
         "id": row["id"],
         "message": row["message"],
@@ -431,7 +413,7 @@ def generate_booking_code() -> str:
 
 
 def find_conflicts(
-    conn: sqlite3.Connection,
+    conn: PostgresConnectionWrapper,
     venue_id: int,
     time_slot: str,
     dates: list[str],
@@ -445,14 +427,14 @@ def find_conflicts(
             FROM bookings b
             JOIN users u ON u.id = b.user_id
             JOIN venues v ON v.id = b.venue_id
-            WHERE b.booking_date = ?
-              AND b.time_slot = ?
-              AND b.venue_id = ?
+            WHERE b.booking_date = %s
+              AND b.time_slot = %s
+              AND b.venue_id = %s
               AND b.status IN ('pending', 'approved')
         """
         params: list = [booking_date, time_slot, venue_id]
         if ignore_booking_id is not None:
-            query += " AND b.id != ?"
+            query += " AND b.id != %s"
             params.append(ignore_booking_id)
         row = conn.execute(query, params).fetchone()
         if row:
@@ -472,7 +454,7 @@ def find_conflicts(
 
 
 def collect_slot_conflicts(
-    conn: sqlite3.Connection,
+    conn: PostgresConnectionWrapper,
     venue_id: int,
     time_slots: list[str],
     dates: list[str],
@@ -484,7 +466,7 @@ def collect_slot_conflicts(
     return conflicts
 
 
-def fetch_bookings(conn: sqlite3.Connection, user: sqlite3.Row | None = None) -> list[dict]:
+def fetch_bookings(conn: PostgresConnectionWrapper, user: dict | None = None) -> list[dict]:
     update_completed_bookings(conn)
     query = """
         SELECT b.*, v.name AS venue_name, v.capacity AS venue_capacity, u.name AS owner_name, u.email AS owner_email
@@ -494,7 +476,7 @@ def fetch_bookings(conn: sqlite3.Connection, user: sqlite3.Row | None = None) ->
     """
     params: list = []
     if user and user["role"] != "admin":
-        query += " WHERE b.user_id = ?"
+        query += " WHERE b.user_id = %s"
         params.append(user["id"])
     query += " ORDER BY b.booking_date DESC, b.time_slot DESC, b.id DESC"
     return [serialize_booking(row) for row in conn.execute(query, params)]
@@ -671,14 +653,14 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
-    def require_auth(self) -> sqlite3.Row | None:
+    def require_auth(self) -> dict | None:
         token = self.headers.get("X-Session-Token", "")
         session = SESSIONS.get(token)
         if not session:
             self.json_response({"error": "Authentication required."}, HTTPStatus.UNAUTHORIZED)
             return None
         with db_connection() as conn:
-            user = conn.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+            user = conn.execute("SELECT * FROM users WHERE id = %s", (session["user_id"],)).fetchone()
         if not user:
             self.json_response({"error": "Session user not found."}, HTTPStatus.UNAUTHORIZED)
             return None
@@ -687,7 +669,7 @@ class AppHandler(BaseHTTPRequestHandler):
             return None
         return user
 
-    def require_ready_user(self) -> sqlite3.Row | None:
+    def require_ready_user(self) -> dict | None:
         user = self.require_auth()
         if not user:
             return None
@@ -759,7 +741,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 """
                 SELECT id, is_deleted, is_active
                 FROM users
-                WHERE email = ?
+                WHERE email = %s
                 """,
                 (email,),
             ).fetchone()
@@ -774,7 +756,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 """
                 SELECT id, name, email, role, can_edit_after_48h, password_reset_required, is_active, is_deleted
                 FROM users
-                WHERE email = ? AND password = ? AND is_active = 1 AND is_deleted = 0
+                WHERE email = %s AND password = %s AND is_active = 1 AND is_deleted = 0
                 """,
                 (email, password),
             ).fetchone()
@@ -821,7 +803,7 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         with db_connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 50",
+                "SELECT * FROM notifications WHERE user_id = %s ORDER BY created_at DESC, id DESC LIMIT 50",
                 (user["id"],),
             ).fetchall()
         self.json_response({"notifications": [serialize_notification(row) for row in rows]})
@@ -864,7 +846,7 @@ class AppHandler(BaseHTTPRequestHandler):
         with db_connection() as conn:
             update_completed_bookings(conn)
             venue = conn.execute(
-                "SELECT * FROM venues WHERE id = ? AND is_active = 1",
+                "SELECT * FROM venues WHERE id = %s AND is_active = 1",
                 (venue_id,),
             ).fetchone()
             if not venue:
@@ -929,7 +911,8 @@ class AppHandler(BaseHTTPRequestHandler):
                         booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
                         purpose, audience_count, audience_details, avit_requirements,
                         status, sitting_arrangements, created_at, updated_at, updated_by_user_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (
                         generate_booking_code(),
@@ -949,7 +932,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         user["id"],
                     ),
                 )
-                created_ids.append(cursor.lastrowid)
+                created_ids.append(cursor.fetchone()["id"])
 
             for booking_id in created_ids:
                 booking = fetch_booking(conn, booking_id)
@@ -965,7 +948,6 @@ class AppHandler(BaseHTTPRequestHandler):
                             admin_id,
                             f"Approval pending: {booking['booked_by']} requested {booking['booking_date']} {booking['time_slot']} at {booking['venue_name']}.",
                         )
-            conn.commit()
             created = [serialize_booking(fetch_booking(conn, booking_id)) for booking_id in created_ids]
         self.json_response(
             {
@@ -1010,7 +992,7 @@ class AppHandler(BaseHTTPRequestHandler):
             new_booked_by = payload.get("bookedBy", booking["booked_by"]).strip()
 
             venue = conn.execute(
-                "SELECT * FROM venues WHERE id = ? AND is_active = 1",
+                "SELECT * FROM venues WHERE id = %s AND is_active = 1",
                 (new_venue_id,),
             ).fetchone()
             if not venue:
@@ -1035,10 +1017,10 @@ class AppHandler(BaseHTTPRequestHandler):
             conn.execute(
                 """
                 UPDATE bookings
-                SET venue_id = ?, booking_date = ?, time_slot = ?, booked_by = ?, purpose = ?,
-                    audience_count = ?, audience_details = ?, avit_requirements = ?,
-                    sitting_arrangements = ?, updated_at = ?, updated_by_user_id = ?
-                WHERE id = ?
+                SET venue_id = %s, booking_date = %s, time_slot = %s, booked_by = %s, purpose = %s,
+                    audience_count = %s, audience_details = %s, avit_requirements = %s,
+                    sitting_arrangements = %s, updated_at = %s, updated_by_user_id = %s
+                WHERE id = %s
                 """,
                 (
                     new_venue_id,
@@ -1068,7 +1050,6 @@ class AppHandler(BaseHTTPRequestHandler):
                         admin_id,
                         f"Booking {booking['booking_code']} was updated by {user['name']}.",
                     )
-            conn.commit()
         self.json_response({"message": "Booking updated successfully.", "booking": serialize_booking(refreshed)})
 
     def handle_delete_booking(self, path: str) -> None:
@@ -1088,7 +1069,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
                 return
             conn.execute(
-                "UPDATE bookings SET status = 'cancelled', updated_at = ?, updated_by_user_id = ? WHERE id = ?",
+                "UPDATE bookings SET status = 'cancelled', updated_at = %s, updated_by_user_id = %s WHERE id = %s",
                 (utc_iso(), user["id"], booking_id),
             )
             add_notification(
@@ -1103,7 +1084,6 @@ class AppHandler(BaseHTTPRequestHandler):
                         admin_id,
                         f"Booking {booking['booking_code']} was cancelled by {user['name']}.",
                     )
-            conn.commit()
         self.json_response({"message": "Booking cancelled successfully."})
 
     def handle_approve_booking(self, path: str) -> None:
@@ -1133,7 +1113,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.json_response({"error": conflicts[0]["message"]}, HTTPStatus.CONFLICT)
                 return
             conn.execute(
-                "UPDATE bookings SET status = 'approved', updated_at = ?, updated_by_user_id = ? WHERE id = ?",
+                "UPDATE bookings SET status = 'approved', updated_at = %s, updated_by_user_id = %s WHERE id = %s",
                 (utc_iso(), user["id"], booking_id),
             )
             add_notification(
@@ -1141,7 +1121,6 @@ class AppHandler(BaseHTTPRequestHandler):
                 booking["user_id"],
                 f"Booking {booking['booking_code']} was approved by admin.",
             )
-            conn.commit()
             refreshed = fetch_booking(conn, booking_id)
         self.json_response({"message": "Booking approved successfully.", "booking": serialize_booking(refreshed)})
 
@@ -1156,12 +1135,12 @@ class AppHandler(BaseHTTPRequestHandler):
         payload = parse_body(self)
         can_edit = 1 if payload.get("canEditAfter48h") else 0
         with db_connection() as conn:
-            target = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            target = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
             if not target:
                 self.json_response({"error": "User not found."}, HTTPStatus.NOT_FOUND)
                 return
             conn.execute(
-                "UPDATE users SET can_edit_after_48h = ? WHERE id = ?",
+                "UPDATE users SET can_edit_after_48h = %s WHERE id = %s",
                 (can_edit, user_id),
             )
             add_notification(
@@ -1169,7 +1148,6 @@ class AppHandler(BaseHTTPRequestHandler):
                 user_id,
                 f"Admin {'granted' if can_edit else 'removed'} post-48-hour edit/delete rights.",
             )
-            conn.commit()
         self.json_response({"message": "Override updated successfully."})
 
     def handle_toggle_user_active(self, path: str) -> None:
@@ -1184,7 +1162,7 @@ class AppHandler(BaseHTTPRequestHandler):
         payload = parse_body(self)
         is_active = 1 if payload.get("isActive", False) else 0
         with db_connection() as conn:
-            target = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            target = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
             if not target:
                 self.json_response({"error": "User not found."}, HTTPStatus.NOT_FOUND)
                 return
@@ -1195,7 +1173,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.json_response({"error": "Deleted users cannot be reactivated."}, HTTPStatus.BAD_REQUEST)
                 return
             conn.execute(
-                "UPDATE users SET is_active = ? WHERE id = ?",
+                "UPDATE users SET is_active = %s WHERE id = %s",
                 (is_active, user_id),
             )
             add_notification(
@@ -1203,7 +1181,6 @@ class AppHandler(BaseHTTPRequestHandler):
                 user_id,
                 f"Admin {'activated' if is_active else 'deactivated'} your account.",
             )
-            conn.commit()
         self.json_response({"message": "User status updated successfully."})
 
     def handle_create_user(self) -> None:
@@ -1230,7 +1207,7 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         with db_connection() as conn:
-            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+            existing = conn.execute("SELECT id FROM users WHERE email = %s", (email,)).fetchone()
             if existing:
                 self.json_response({"error": "A user with this email already exists."}, HTTPStatus.CONFLICT)
                 return
@@ -1238,21 +1215,21 @@ class AppHandler(BaseHTTPRequestHandler):
             cursor = conn.execute(
                 """
                 INSERT INTO users (name, email, password, role, can_edit_after_48h, password_reset_required)
-                VALUES (?, ?, ?, 'user', 0, 0)
+                VALUES (%s, %s, %s, 'user', 0, 0)
+                RETURNING id
                 """,
                 (name, email, password),
             )
-            new_user_id = cursor.lastrowid
+            new_user_id = cursor.fetchone()["id"]
             add_notification(
                 conn,
                 new_user_id,
                 f"Your account has been created by admin {user['name']}.",
             )
-            conn.commit()
             created_user = conn.execute(
                 """
-                SELECT id, name, email, role, can_edit_after_48h, password_reset_required
-                FROM users WHERE id = ?
+                SELECT id, name, email, role, can_edit_after_48h, password_reset_required, is_active, is_deleted
+                FROM users WHERE id = %s
                 """,
                 (new_user_id,),
             ).fetchone()
@@ -1292,17 +1269,16 @@ class AppHandler(BaseHTTPRequestHandler):
             conn.execute(
                 """
                 UPDATE users
-                SET password = ?, password_reset_required = 0
-                WHERE id = ?
+                SET password = %s, password_reset_required = 0
+                WHERE id = %s
                 """,
                 (new_password, user["id"]),
             )
             add_notification(conn, user["id"], "Your password was changed successfully.")
-            conn.commit()
             refreshed = conn.execute(
                 """
-                SELECT id, name, email, role, can_edit_after_48h, password_reset_required
-                FROM users WHERE id = ?
+                SELECT id, name, email, role, can_edit_after_48h, password_reset_required, is_active, is_deleted
+                FROM users WHERE id = %s
                 """,
                 (user["id"],),
             ).fetchone()
@@ -1324,7 +1300,7 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         with db_connection() as conn:
-            target = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            target = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
             if not target:
                 self.json_response({"error": "User not found."}, HTTPStatus.NOT_FOUND)
                 return
@@ -1334,8 +1310,8 @@ class AppHandler(BaseHTTPRequestHandler):
             conn.execute(
                 """
                 UPDATE users
-                SET password = ?, password_reset_required = 1
-                WHERE id = ?
+                SET password = %s, password_reset_required = 1
+                WHERE id = %s
                 """,
                 (temporary_password, user_id),
             )
@@ -1344,7 +1320,6 @@ class AppHandler(BaseHTTPRequestHandler):
                 user_id,
                 "Admin reset your password. Please log in with the temporary password and change it immediately.",
             )
-            conn.commit()
         self.json_response({"message": "Temporary password set. User must change it after login."})
 
     def handle_delete_user(self, path: str) -> None:
@@ -1363,7 +1338,7 @@ class AppHandler(BaseHTTPRequestHandler):
         with db_connection() as conn:
             update_completed_bookings(conn)
             
-            target = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            target = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
             if not target:
                 self.json_response({"error": "User not found."}, HTTPStatus.NOT_FOUND)
                 return
@@ -1374,7 +1349,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 """
                 SELECT COUNT(*) AS booking_count
                 FROM bookings
-                WHERE user_id = ? AND status IN ('pending', 'approved')
+                WHERE user_id = %s AND status IN ('pending', 'approved')
                 """,
                 (user_id,),
             ).fetchone()["booking_count"]
@@ -1389,12 +1364,11 @@ class AppHandler(BaseHTTPRequestHandler):
             conn.execute(
                 """
                 UPDATE users
-                SET is_active = 0, is_deleted = 1, email = ?, name = ?, password_reset_required = 0
-                WHERE id = ?
+                SET is_active = 0, is_deleted = 1, email = %s, name = %s, password_reset_required = 0
+                WHERE id = %s
                 """,
                 (archived_email, archived_name, user_id),
             )
-            conn.commit()
         self.json_response({"message": "User deleted from active use successfully."})
 
     def handle_clear_logs(self) -> None:
@@ -1406,7 +1380,6 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         with db_connection() as conn:
             conn.execute("DELETE FROM notifications")
-            conn.commit()
         self.json_response({"message": "Activity logs cleared successfully."})
 
     def handle_clear_bookings(self) -> None:
@@ -1418,7 +1391,6 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         with db_connection() as conn:
             conn.execute("DELETE FROM bookings")
-            conn.commit()
         self.json_response({"message": "All database bookings cleared successfully."})
 
     def handle_export(self, query: str) -> None:
