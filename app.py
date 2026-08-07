@@ -9,6 +9,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+import urllib.request
+import urllib.error
 
 # Import PostgreSQL drivers
 import psycopg2
@@ -295,17 +297,53 @@ def update_completed_bookings(conn: PostgresConnectionWrapper) -> None:
         pass
 
 
-def db_connection() -> PostgresConnectionWrapper:
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        raise ValueError("DATABASE_URL environment variable is missing! Please configure it in your Render settings.")
-    
-    # Render's database strings often start with postgres://, but Python's psycopg2 prefers postgresql://
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
+# Custom redirect handler to preserve POST method and headers on Google redirects
+class PostRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if code in (301, 302, 303, 307):
+            new_req = urllib.request.Request(
+                newurl,
+                data=req.data,
+                headers=req.headers,
+                origin_req_host=req.origin_req_host,
+                unverifiable=True
+            )
+            new_req.get_method = lambda: "POST"
+            return new_req
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def sync_to_google_sheet(booking: dict) -> None:
+    """Send booking details to Google Sheets Webhook on creation, update, approval or cancellation."""
+    webhook_url = os.getenv("GOOGLE_SHEET_WEBHOOK")
+    if not webhook_url:
+        return
+    try:
+        data = {
+            "bookingCode": booking["bookingCode"],
+            "bookingDate": booking["bookingDate"],
+            "timeSlot": booking["timeSlot"],
+            "venueName": booking["venueName"],
+            "bookedBy": booking["bookedBy"],
+            "purpose": booking["purpose"],
+            "audienceCount": booking["audienceCount"],
+            "status": booking["status"],
+            "createdAt": booking["createdAt"]
+        }
         
-    raw_conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.DictCursor)
-    return PostgresConnectionWrapper(raw_conn)
+        # Build standard urllib opener with our redirect preserver
+        opener = urllib.request.build_opener(PostRedirectHandler())
+        
+        req = urllib.request.Request(
+            webhook_url,
+            data=json.dumps(data).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with opener.open(req, timeout=8) as response:
+            res_body = response.read().decode("utf-8")
+            print(f"[DEBUG] Google Sheet sync response: {res_body}", flush=True)
+    except Exception as e:
+        print(f"[DEBUG] Google Sheet sync failed: {e}", flush=True)
 
 
 def user_can_manage_booking(actor: dict, booking: dict) -> bool:
@@ -937,6 +975,8 @@ class AppHandler(BaseHTTPRequestHandler):
             for booking_id in created_ids:
                 booking = fetch_booking(conn, booking_id)
                 if booking:
+                    # Sync created bookings to Google Sheets
+                    sync_to_google_sheet(serialize_booking(booking))
                     add_notification(
                         conn,
                         user["id"],
@@ -1038,18 +1078,21 @@ class AppHandler(BaseHTTPRequestHandler):
                 ),
             )
             refreshed = fetch_booking(conn, booking_id)
-            add_notification(
-                conn,
-                booking["user_id"],
-                f"Booking {booking['booking_code']} was updated by {user['name']}.",
-            )
-            for admin_id in get_admin_ids(conn):
-                if admin_id != user["id"]:
-                    add_notification(
-                        conn,
-                        admin_id,
-                        f"Booking {booking['booking_code']} was updated by {user['name']}.",
-                    )
+            if refreshed:
+                # Sync updated details to Google Sheets
+                sync_to_google_sheet(serialize_booking(refreshed))
+                add_notification(
+                    conn,
+                    booking["user_id"],
+                    f"Booking {booking['booking_code']} was updated by {user['name']}.",
+                )
+                for admin_id in get_admin_ids(conn):
+                    if admin_id != user["id"]:
+                        add_notification(
+                            conn,
+                            admin_id,
+                            f"Booking {booking['booking_code']} was updated by {user['name']}.",
+                        )
         self.json_response({"message": "Booking updated successfully.", "booking": serialize_booking(refreshed)})
 
     def handle_delete_booking(self, path: str) -> None:
@@ -1072,18 +1115,22 @@ class AppHandler(BaseHTTPRequestHandler):
                 "UPDATE bookings SET status = 'cancelled', updated_at = %s, updated_by_user_id = %s WHERE id = %s",
                 (utc_iso(), user["id"], booking_id),
             )
-            add_notification(
-                conn,
-                booking["user_id"],
-                f"Booking {booking['booking_code']} was cancelled by {user['name']}.",
-            )
-            for admin_id in get_admin_ids(conn):
-                if admin_id != user["id"]:
-                    add_notification(
-                        conn,
-                        admin_id,
-                        f"Booking {booking['booking_code']} was cancelled by {user['name']}.",
-                    )
+            updated_booking = fetch_booking(conn, booking_id)
+            if updated_booking:
+                # Sync status update to Google Sheets
+                sync_to_google_sheet(serialize_booking(updated_booking))
+                add_notification(
+                    conn,
+                    booking["user_id"],
+                    f"Booking {booking['booking_code']} was cancelled by {user['name']}.",
+                )
+                for admin_id in get_admin_ids(conn):
+                    if admin_id != user["id"]:
+                        add_notification(
+                            conn,
+                            admin_id,
+                            f"Booking {booking['booking_code']} was cancelled by {user['name']}.",
+                        )
         self.json_response({"message": "Booking cancelled successfully."})
 
     def handle_approve_booking(self, path: str) -> None:
@@ -1116,12 +1163,15 @@ class AppHandler(BaseHTTPRequestHandler):
                 "UPDATE bookings SET status = 'approved', updated_at = %s, updated_by_user_id = %s WHERE id = %s",
                 (utc_iso(), user["id"], booking_id),
             )
-            add_notification(
-                conn,
-                booking["user_id"],
-                f"Booking {booking['booking_code']} was approved by admin.",
-            )
             refreshed = fetch_booking(conn, booking_id)
+            if refreshed:
+                # Sync status update to Google Sheets
+                sync_to_google_sheet(serialize_booking(refreshed))
+                add_notification(
+                    conn,
+                    booking["user_id"],
+                    f"Booking {booking['booking_code']} was approved by admin.",
+                )
         self.json_response({"message": "Booking approved successfully.", "booking": serialize_booking(refreshed)})
 
     def handle_toggle_override(self, path: str) -> None:
