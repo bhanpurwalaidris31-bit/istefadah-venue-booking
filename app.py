@@ -329,22 +329,6 @@ def update_completed_bookings(conn: PostgresConnectionWrapper) -> None:
         pass
 
 
-# Custom redirect handler to preserve POST method and headers on Google redirects
-class PostRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if code in (301, 302, 303, 307):
-            new_req = urllib.request.Request(
-                newurl,
-                data=req.data,
-                headers=req.headers,
-                origin_req_host=req.origin_req_host,
-                unverifiable=True
-            )
-            new_req.get_method = lambda: "POST"
-            return new_req
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
 def sync_to_google_sheet(booking: dict) -> None:
     """Send booking details to Google Sheets Webhook on creation, update, approval or cancellation."""
     webhook_url = os.getenv("GOOGLE_SHEET_WEBHOOK")
@@ -363,15 +347,14 @@ def sync_to_google_sheet(booking: dict) -> None:
             "createdAt": booking["createdAt"]
         }
         
-        # Build standard urllib opener with our redirect preserver
-        opener = urllib.request.build_opener(PostRedirectHandler())
-        
         req = urllib.request.Request(
             webhook_url,
             data=json.dumps(data).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        with opener.open(req, timeout=8) as response:
+        
+        # Standard urlopen naturally switches the method to GET during 302 redirects
+        with urllib.request.urlopen(req, timeout=8) as response:
             res_body = response.read().decode("utf-8")
             print(f"[DEBUG] Google Sheet sync response: {res_body}", flush=True)
     except Exception as e:
@@ -1644,4 +1627,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
