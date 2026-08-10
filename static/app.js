@@ -549,6 +549,9 @@ function renderBookings() {
           const approveButton = isAdmin && booking.status === "pending"
             ? `<button class="primary-btn" data-action="approve" data-id="${booking.id}">Approve</button>`
             : "";
+          const revertButton = isAdmin && booking.status === "approved"
+            ? `<button class="secondary-btn" data-action="revert" data-id="${booking.id}">Revert</button>`
+            : "";
           const editButton = booking.status === "pending"
             ? `<button class="secondary-btn" ${!canEdit ? "disabled" : ""} data-action="edit" data-id="${booking.id}">Edit</button>`
             : "";
@@ -572,7 +575,7 @@ function renderBookings() {
               <td>${escapeHtml(String(booking.audienceCount))}</td>
               <td>${escapeHtml(formatRequirements(booking))}</td> <!-- Modification 1 -->
               <td><span class="status-pill status-${booking.status}">${escapeHtml(booking.status)}</span></td>
-              <td><div class="table-actions">${approveButton}${editButton}${cancelButton}</div></td>
+              <td><div class="table-actions">${approveButton}${revertButton}${editButton}${cancelButton}</div></td>
             </tr>
           `;
         })
@@ -1197,6 +1200,22 @@ activeBookingTableBody.addEventListener("click", async (event) => {
         body: JSON.stringify({}),
       });
       showToast("Booking approved successfully.", "success");
+      await refreshData();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+    return;
+  }
+
+  if (button.dataset.action === "revert") {
+    const confirmed = window.confirm(`Revert booking ${booking.bookingCode} back to pending status?`);
+    if (!confirmed) return;
+    try {
+      await api(`/api/bookings/${bookingId}/revert`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      showToast("Booking reverted to pending status.", "info");
       await refreshData();
     } catch (error) {
       showToast(error.message, "error");

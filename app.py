@@ -681,6 +681,9 @@ class AppHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/bookings/") and parsed.path.endswith("/approve"):
             self.handle_approve_booking(parsed.path)
             return
+        if parsed.path.startswith("/api/bookings/") and parsed.path.endswith("/revert"):
+            self.handle_revert_booking(parsed.path)
+            return
         if parsed.path.startswith("/api/admin/users/") and parsed.path.endswith("/override"):
             self.handle_toggle_override(parsed.path)
             return
@@ -1242,6 +1245,41 @@ class AppHandler(BaseHTTPRequestHandler):
                     f"Booking {booking['booking_code']} was approved by admin.",
                 )
         self.json_response({"message": "Booking approved successfully.", "booking": serialize_booking(refreshed)})
+
+    def handle_revert_booking(self, path: str) -> None:
+        user = self.require_ready_user()
+        if not user:
+            return
+        if user["role"] != "admin":
+            self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
+            return
+        booking_id = int(path.split("/")[-2])
+        with db_connection() as conn:
+            booking = fetch_booking(conn, booking_id)
+            if not booking:
+                self.json_response({"error": "Booking not found."}, HTTPStatus.NOT_FOUND)
+                return
+            if booking["status"] != "approved":
+                self.json_response({"error": "Only approved bookings can be reverted to pending."}, HTTPStatus.BAD_REQUEST)
+                return
+            
+            booking_code = booking["booking_code"]
+            
+            # Revert all bookings in this block to pending status
+            conn.execute(
+                "UPDATE bookings SET status = 'pending', updated_at = %s, updated_by_user_id = %s WHERE booking_code = %s",
+                (utc_iso(), user["id"], booking_code),
+            )
+            refreshed = fetch_booking(conn, booking_id)
+            if refreshed:
+                # Sync status update back to Google Sheets
+                sync_to_google_sheet(serialize_booking(refreshed))
+                add_notification(
+                    conn,
+                    booking["user_id"],
+                    f"Booking {booking['booking_code']} was reverted to pending by admin.",
+                )
+        self.json_response({"message": "Booking reverted to pending successfully.", "booking": serialize_booking(refreshed)})
 
     def handle_toggle_override(self, path: str) -> None:
         user = self.require_ready_user()
