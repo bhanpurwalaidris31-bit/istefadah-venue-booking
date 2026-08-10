@@ -6,9 +6,9 @@
     <title>Istefadah Venue Booking</title>
     <link rel="stylesheet" href="/static/app.css" />
     <style>
-      /* Corrected Print Media Queries */
+      /* Print Media Queries */
       @media print {
-        /* 1. Explicitly hide non-reporting blocks */
+        /* Hide non-reporting blocks */
         .hero-panel,
         .topbar,
         #loginView,
@@ -20,11 +20,13 @@
         .table-actions,
         .password-toggle-btn,
         .message,
-        .hint {
+        .hint,
+        #bulkAdminActions,
+        .filter-wrap {
           display: none !important;
         }
 
-        /* 2. Force outer container wrappers to stay visible */
+        /* Force outer container wrappers to stay visible */
         html, body, .shell, .app-panel, #appView {
           background: none !important;
           color: #000 !important;
@@ -38,7 +40,7 @@
           visibility: visible !important;
         }
 
-        /* 3. Force report sections to display and break cleanly */
+        /* Force report sections to display and break cleanly */
         #activeBookingsSection, 
         #historySection {
           display: block !important;
@@ -51,7 +53,7 @@
           page-break-inside: avoid !important;
         }
 
-        /* 4. Force HTML5 <details> element (History) to expand natively */
+        /* Force HTML5 <details> element (History) to expand natively */
         #historySection {
           display: block !important;
         }
@@ -65,7 +67,7 @@
           visibility: visible !important;
         }
 
-        /* 5. Clean up sorting button headers so column text prints clearly */
+        /* Clean up sorting button headers so column text prints clearly */
         button.sort-header {
           display: inline-block !important;
           border: none !important;
@@ -81,13 +83,19 @@
           display: none !important; /* Hide the arrow symbol */
         }
 
-        /* 6. Hide the empty Actions column on the Active Bookings table */
+        /* Hide the empty Actions column on the Active Bookings table */
         #activeBookingsSection th:last-child,
         #activeBookingsSection td:last-child {
           display: none !important;
         }
 
-        /* 7. Clean table and cell borders for ink-friendly output */
+        /* Hide checkbox selection column on print */
+        #thSelectAll,
+        .select-col-td {
+          display: none !important;
+        }
+
+        /* Clean table and cell borders for ink-friendly output */
         .table-wrap {
           overflow: visible !important;
         }
@@ -301,22 +309,39 @@
           </section>
 
           <section class="card print-report" id="activeBookingsSection">
-            <div class="section-head">
+            <div class="section-head" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
               <div>
                 <p class="section-tag" id="tableTag">Active Bookings</p>
-                <h2 id="tableTitle">Current bookings</h2>
+                <h2 id="tableTitle" style="margin: 4px 0 0;">Current bookings</h2>
+              </div>
+              <!-- Modification 5: Custom Venue Group Dropdown Filter -->
+              <div class="filter-wrap" style="display: flex; align-items: center; gap: 8px;">
+                <label for="venueDetailFilter" style="font-weight: 600; font-size: 0.9rem; color: var(--muted); white-space: nowrap;">Filter Group:</label>
+                <select id="venueDetailFilter" style="width: 220px; border-radius: 12px; padding: 8px 12px; border: 1px solid var(--line); background-color: #fff;"></select>
               </div>
             </div>
+
+            <!-- Modification 3: Bulk Approval Action Banner -->
+            <div id="bulkAdminActions" class="hidden" style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; background-color: var(--panel-alt); border: 1px solid #bfe0d6; border-radius: 16px; padding: 12px 18px;">
+              <span style="font-weight: bold; color: var(--accent-dark); font-size: 0.95rem;">Bulk Actions:</span>
+              <button id="approveSelectedBtn" class="primary-btn" style="padding: 6px 16px; font-size: 0.85rem;">Approve Selected</button>
+            </div>
+
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
+                    <!-- Modification 3: Header Checkbox column, hidden by default -->
+                    <th id="thSelectAll" class="hidden" style="width: 40px; text-align: center; vertical-align: middle;">
+                      <input type="checkbox" id="selectAllPending" style="width: auto; transform: scale(1.15); cursor: pointer;" />
+                    </th>
                     <th><button type="button" class="sort-header" data-sort-field="date">Date <span id="sort-date">↕</span></button></th>
                     <th><button type="button" class="sort-header" data-sort-field="time">Time <span id="sort-time">↕</span></button></th>
                     <th><button type="button" class="sort-header" data-sort-field="venue">Venue <span id="sort-venue">↕</span></button></th>
                     <th><button type="button" class="sort-header" data-sort-field="user">Booked By <span id="sort-user">↕</span></button></th>
                     <th>Purpose</th>
                     <th>Audience</th>
+                    <th>Requirements</th> <!-- Modification 1: Requirements Column -->
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -345,6 +370,7 @@
                     <th>Booked By</th>
                     <th>Purpose</th>
                     <th>Audience</th>
+                    <th>Requirements</th> <!-- Modification 1: Requirements Column -->
                     <th>Status</th>
                   </tr>
                 </thead>

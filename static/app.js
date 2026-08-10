@@ -213,12 +213,148 @@ function getHistoryBookings() {
   );
 }
 
+// Modification 1: Formatting Requirements for UI Table Display
+function formatRequirements(booking) {
+  const avit = booking.avitRequirements || [];
+  const sitting = booking.sittingArrangements || [];
+  const parts = [];
+  if (avit.length > 0) {
+    parts.push(`AVIT: ${avit.join(", ")}`);
+  }
+  if (sitting.length > 0) {
+    parts.push(`Sitting: ${sitting.join(", ")}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : "—";
+}
+
+// Modification 2: Helper algorithm to merge contiguous 30min time slots
+function mergeTimeSlots(slots) {
+  if (!slots || slots.length === 0) return "";
+  const sorted = [...slots].sort((a, b) => {
+    return a.split("-")[0].localeCompare(b.split("-")[0]);
+  });
+  
+  const merged = [];
+  let currentStart = null;
+  let currentEnd = null;
+  
+  for (const slot of sorted) {
+    const [start, end] = slot.split("-");
+    if (currentStart === null) {
+      currentStart = start;
+      currentEnd = end;
+    } else if (start === currentEnd) {
+      currentEnd = end;
+    } else {
+      merged.push(`${currentStart}-${currentEnd}`);
+      currentStart = start;
+      currentEnd = end;
+    }
+  }
+  if (currentStart !== null) {
+    merged.push(`${currentStart}-${currentEnd}`);
+  }
+  return merged.join(", ");
+}
+
+// Modification 2: Helper algorithm to merge contiguous calendar dates
+function mergeDates(dates) {
+  if (!dates || dates.length === 0) return "";
+  const sorted = [...new Set(dates)].sort();
+  const merged = [];
+  
+  let rangeStart = null;
+  let rangeEnd = null;
+  
+  for (const dStr of sorted) {
+    if (rangeStart === null) {
+      rangeStart = dStr;
+      rangeEnd = dStr;
+    } else {
+      const prevDate = new Date(`${rangeEnd}T00:00:00`);
+      prevDate.setDate(prevDate.getDate() + 1);
+      const expectedStr = prevDate.toISOString().slice(0, 10);
+      if (dStr === expectedStr) {
+        rangeEnd = dStr;
+      } else {
+        if (rangeStart === rangeEnd) {
+          merged.push(rangeStart);
+        } else {
+          merged.push(`${rangeStart} to ${rangeEnd}`);
+        }
+        rangeStart = dStr;
+        rangeEnd = dStr;
+      }
+    }
+  }
+  if (rangeStart !== null) {
+    if (rangeStart === rangeEnd) {
+      merged.push(rangeStart);
+    } else {
+      merged.push(`${rangeStart} to ${rangeEnd}`);
+    }
+  }
+  return merged.join(", ");
+}
+
+// Modification 2: Grouping bookings by matching booking_code
+function clubBookings(bookingsList) {
+  const groups = {};
+  for (const b of bookingsList) {
+    const code = b.bookingCode || `GEN-${b.id}`;
+    if (!groups[code]) {
+      groups[code] = {
+        id: b.id,
+        ids: [b.id],
+        bookingCode: b.bookingCode,
+        userId: b.userId,
+        bookedBy: b.bookedBy,
+        ownerName: b.ownerName,
+        ownerEmail: b.ownerEmail,
+        venueId: b.venueId,
+        venueName: b.venueName,
+        venueCapacity: b.venueCapacity,
+        purpose: b.purpose,
+        audienceCount: b.audienceCount,
+        audienceDetails: b.audienceDetails,
+        avitRequirements: b.avitRequirements,
+        sittingArrangements: b.sittingArrangements,
+        status: b.status,
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+        dates: [b.bookingDate],
+        timeSlots: [b.timeSlot]
+      };
+    } else {
+      groups[code].ids.push(b.id);
+      if (!groups[code].dates.includes(b.bookingDate)) {
+        groups[code].dates.push(b.bookingDate);
+      }
+      if (!groups[code].timeSlots.includes(b.timeSlot)) {
+        groups[code].timeSlots.push(b.timeSlot);
+      }
+    }
+  }
+
+  return Object.values(groups).map(g => {
+    return {
+      ...g,
+      bookingDate: mergeDates(g.dates),
+      timeSlot: mergeTimeSlots(g.timeSlots),
+      rawDates: g.dates.sort(),
+      rawTimeSlots: g.timeSlots.sort()
+    };
+  });
+}
+
 function sortActiveBookings(bookings) {
   const factor = state.activeSortDirection === "desc" ? -1 : 1;
   return [...bookings].sort((left, right) => {
     let result = 0;
     if (state.activeSort === "date") {
-      result = compareValues(left.bookingDate, right.bookingDate) || compareValues(left.timeSlot, right.timeSlot);
+      const leftDate = left.rawDates ? left.rawDates[0] : left.bookingDate;
+      const rightDate = right.rawDates ? right.rawDates[0] : right.bookingDate;
+      result = compareValues(leftDate, rightDate) || compareValues(left.timeSlot, right.timeSlot);
     } else if (state.activeSort === "time") {
       result = compareValues(left.timeSlot, right.timeSlot) || compareValues(left.bookingDate, right.bookingDate);
     } else if (state.activeSort === "venue") {
@@ -248,6 +384,23 @@ function updateDateModeUi() {
   addRangeBtn.classList.toggle("hidden", isSingle);
 }
 
+// Modification 5: Dynamically building unique filter categories
+function populateVenueDetailFilter() {
+  const filterEl = document.getElementById("venueDetailFilter");
+  if (!filterEl) return;
+  const details = [...new Set(state.venues.map(v => v.details).filter(Boolean))].sort();
+  const currentSelection = filterEl.value || "all";
+  
+  filterEl.innerHTML = `<option value="all">All Groups / Venues</option>` +
+    details.map(detail => `<option value="${detail}">${detail}</option>`).join("");
+    
+  if (currentSelection === "all" || details.includes(currentSelection)) {
+    filterEl.value = currentSelection;
+  } else {
+    filterEl.value = "all";
+  }
+}
+
 function populateBootstrap(data) {
   state.venues = data.venues;
   state.users = data.users;
@@ -256,6 +409,7 @@ function populateBootstrap(data) {
     .map((venue) => `<option value="${venue.id}">${venue.name} (${venue.capacity})</option>`)
     .join("");
   renderTimeSlots();
+  populateVenueDetailFilter();
 }
 
 function updateTimeSlotSummary() {
@@ -341,38 +495,89 @@ function canManageBooking(booking) {
   return hoursElapsed <= 6;
 }
 
+// Modification 3: Reset bulk banner status
+function updateBulkActionsBar() {
+  const bulkBar = document.getElementById("bulkAdminActions");
+  if (!bulkBar) return;
+  const anyChecked = document.querySelectorAll(".pending-select-cb:checked").length > 0;
+  bulkBar.classList.toggle("hidden", !anyChecked);
+}
+
+// Modification 1, 2, 3, 5: Main integrated render block
 function renderBookings() {
-  const activeBookings = sortActiveBookings(getActiveBookings());
-  const historyBookings = getHistoryBookings();
+  const filterEl = document.getElementById("venueDetailFilter");
+  const selectedDetail = filterEl ? filterEl.value : "all";
+
+  let rawActive = getActiveBookings();
+  let rawHistory = getHistoryBookings();
+
+  // Modification 5: Filtering visible bookings based on details grouping select element
+  if (selectedDetail !== "all") {
+    rawActive = rawActive.filter(b => {
+      const venue = state.venues.find(v => v.id === b.venueId);
+      return venue && venue.details === selectedDetail;
+    });
+    rawHistory = rawHistory.filter(b => {
+      const venue = state.venues.find(v => v.id === b.venueId);
+      return venue && venue.details === selectedDetail;
+    });
+  }
+
+  // Modification 2: Applying slot aggregation layout
+  const activeBookings = sortActiveBookings(clubBookings(rawActive));
+  const historyBookings = clubBookings(rawHistory);
+
   metricBookings.textContent = `${activeBookings.length}`;
   metricHistory.textContent = `${historyBookings.length}`;
+
+  const isAdmin = state.currentUser && state.currentUser.role === "admin";
+  
+  // Modification 3: Toggle bulk actions headers
+  const thSelectAll = document.getElementById("thSelectAll");
+  if (thSelectAll) {
+    thSelectAll.classList.toggle("hidden", !isAdmin);
+  }
+  
+  const selectAllCheckbox = document.getElementById("selectAllPending");
+  if (selectAllCheckbox) selectAllCheckbox.checked = false;
+  updateBulkActionsBar();
 
   activeBookingTableBody.innerHTML = activeBookings.length
     ? activeBookings
         .map((booking) => {
           const canEdit = canManageBooking(booking);
-          const approveButton = state.currentUser.role === "admin" && booking.status === "pending"
+          const approveButton = isAdmin && booking.status === "pending"
             ? `<button class="primary-btn" data-action="approve" data-id="${booking.id}">Approve</button>`
             : "";
           const editButton = booking.status === "pending"
             ? `<button class="secondary-btn" ${!canEdit ? "disabled" : ""} data-action="edit" data-id="${booking.id}">Edit</button>`
             : "";
           const cancelButton = `<button class="danger-btn" ${!canEdit ? "disabled" : ""} data-action="delete" data-id="${booking.id}">Cancel</button>`;
+          
+          // Modification 3: Row checkboxes for admins
+          const selectTd = isAdmin
+            ? `<td class="select-col-td" style="text-align: center; vertical-align: middle;">
+                ${booking.status === 'pending' ? `<input type="checkbox" class="pending-select-cb" data-id="${booking.ids.join(',')}" style="transform: scale(1.15); cursor: pointer;" />` : '—'}
+               </td>`
+            : "";
+
           return `
             <tr>
+              ${selectTd}
               <td>${escapeHtml(booking.bookingDate)}</td>
               <td>${escapeHtml(booking.timeSlot)}</td>
               <td>${escapeHtml(booking.venueName)}</td>
               <td>${escapeHtml(booking.bookedBy)}</td>
               <td>${escapeHtml(booking.purpose)}</td>
               <td>${escapeHtml(String(booking.audienceCount))}</td>
+              <td>${escapeHtml(formatRequirements(booking))}</td> <!-- Modification 1 -->
               <td><span class="status-pill status-${booking.status}">${escapeHtml(booking.status)}</span></td>
               <td><div class="table-actions">${approveButton}${editButton}${cancelButton}</div></td>
             </tr>
           `;
         })
         .join("")
-    : `<tr><td colspan="8">No bookings found.</td></tr>`;
+    : `<tr><td colspan="${isAdmin ? '10' : '9'}">No bookings found.</td></tr>`;
 
   historyBookingTableBody.innerHTML = historyBookings.length
     ? historyBookings
@@ -385,16 +590,17 @@ function renderBookings() {
               <td>${escapeHtml(booking.bookedBy)}</td>
               <td>${escapeHtml(booking.purpose)}</td>
               <td>${escapeHtml(String(booking.audienceCount))}</td>
+              <td>${escapeHtml(formatRequirements(booking))}</td> <!-- Modification 1 -->
               <td><span class="status-pill status-${booking.status}">${escapeHtml(booking.status)}</span></td>
             </tr>
           `
         )
         .join("")
-    : `<tr><td colspan="7">No booking history found.</td></tr>`;
+    : `<tr><td colspan="8">No booking history found.</td></tr>`;
 
-  tableTag.textContent = state.currentUser.role === "admin" ? "All Bookings" : "My Bookings";
-  tableTitle.textContent = state.currentUser.role === "admin" ? "Approval and active bookings" : "Your pending and approved bookings";
-  tableMessage.textContent = state.currentUser.role === "admin"
+  tableTag.textContent = isAdmin ? "All Bookings" : "My Bookings";
+  tableTitle.textContent = isAdmin ? "Approval and active bookings" : "Your pending and approved bookings";
+  tableMessage.textContent = isAdmin
     ? "Admins can approve pending bookings and cancel any booking."
     : "Pending bookings can be edited for 6 hours. Approved bookings are locked from editing.";
   historyMessage.textContent = "Cancelled records are shown here.";
@@ -503,7 +709,6 @@ async function refreshData() {
     api("/api/notifications"),
   ]);
 
-  // Check for new notifications to push toast popups
   if (state.notifications.length > 0 && notificationsPayload.notifications.length > 0) {
     const latestNew = notificationsPayload.notifications[0];
     const latestOld = state.notifications[0];
@@ -538,12 +743,13 @@ function showLogin() {
   state.currentUser = null;
 }
 
+// Modification 2: Upgrading layout edit mapping support
 function fillBookingForm(booking) {
   bookedByEl.value = booking.bookedBy;
   document.getElementById("purpose").value = booking.purpose;
   venueIdEl.value = booking.venueId;
-  state.selectedTimeSlots = [booking.timeSlot];
-  state.selectedDates = [booking.bookingDate];
+  state.selectedTimeSlots = booking.rawTimeSlots || [booking.timeSlot];
+  state.selectedDates = booking.rawDates || [booking.bookingDate];
   document.getElementById("audienceCount").value = booking.audienceCount;
   setCheckedValues("avitOptions", booking.avitRequirements);
   setCheckedValues("sittingOptions", booking.sittingArrangements);
@@ -610,7 +816,6 @@ function addDateRange() {
   setMessage(bookingMessage, "");
 }
 
-// Bind directly to password toggle buttons, preventing labels from hijacking clicks
 function initPasswordToggles() {
   document.querySelectorAll(".password-toggle-btn").forEach((btn) => {
     btn.addEventListener("click", (event) => {
@@ -787,6 +992,88 @@ document.querySelectorAll("input[name='dateMode']").forEach((input) => {
   });
 });
 
+// Modification 5: Render filtered lists when filter selection changes
+document.getElementById("venueDetailFilter")?.addEventListener("change", () => {
+  renderBookings();
+});
+
+// Modification 3: Toggle "Select All Pending" Checkbox action
+document.getElementById("selectAllPending")?.addEventListener("change", (event) => {
+  const checked = event.target.checked;
+  document.querySelectorAll(".pending-select-cb").forEach((cb) => {
+    cb.checked = checked;
+  });
+  updateBulkActionsBar();
+});
+
+// Modification 3 & 4: Bulk Selection Approval Trigger
+document.getElementById("approveSelectedBtn")?.addEventListener("click", async () => {
+  const checkedCbs = document.querySelectorAll(".pending-select-cb:checked");
+  if (!checkedCbs.length) return;
+  
+  const uniqueBookingIdsToApprove = [];
+  const processedCodes = new Set();
+  
+  checkedCbs.forEach((cb) => {
+    const ids = cb.dataset.id.split(",").map(Number);
+    const bookingId = ids[0];
+    const b = state.bookings.find(item => item.id === bookingId);
+    if (b && !processedCodes.has(b.bookingCode)) {
+      processedCodes.add(b.bookingCode);
+      uniqueBookingIdsToApprove.push(bookingId);
+    }
+  });
+
+  if (!uniqueBookingIdsToApprove.length) return;
+  
+  const confirmed = window.confirm(`Are you sure you want to approve the ${uniqueBookingIdsToApprove.length} selected pending block(s)?`);
+  if (!confirmed) return;
+  
+  showToast("Processing bulk approvals...", "info");
+  
+  let successCount = 0;
+  let failCount = 0;
+  let lastError = "";
+
+  for (const bookingId of uniqueBookingIdsToApprove) {
+    try {
+      const booking = state.bookings.find(item => item.id === bookingId);
+      if (booking) {
+        const venue = state.venues.find(v => v.id === booking.venueId);
+        // Modification 4: Warning validation checkpoint for Jamea detail groups
+        if (venue && venue.details === "Jamea") {
+          const doubleConfirmed = window.confirm(
+            `Booking Code: ${booking.bookingCode} (Booked by: ${booking.bookedBy})\n` +
+            `This venue "${venue.name}" belongs to the Al Jamea group.\n\n` +
+            `Is the approval taken from Al Jamea?`
+          );
+          if (!doubleConfirmed) {
+            continue; 
+          }
+        }
+      }
+      
+      await api(`/api/bookings/${bookingId}/approve`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      successCount++;
+    } catch (error) {
+      failCount++;
+      lastError = error.message;
+    }
+  }
+  
+  if (successCount > 0) {
+    showToast(`Successfully approved ${successCount} booking(s).`, "success");
+  }
+  if (failCount > 0) {
+    showToast(`Failed to approve ${failCount} booking(s). Error: ${lastError}`, "error");
+  }
+  
+  await refreshData();
+});
+
 document.querySelectorAll(".sort-header").forEach((button) => {
   button.addEventListener("click", () => {
     const field = button.dataset.sortField;
@@ -869,6 +1156,19 @@ adminClearBookingsBtn?.addEventListener("click", async () => {
   }
 });
 
+// Modification 3 & 4: Listened changes for checkbox updates and interactive single-approvals
+activeBookingTableBody.addEventListener("change", (event) => {
+  if (event.target.classList.contains("pending-select-cb")) {
+    updateBulkActionsBar();
+    const selectAllCheckbox = document.getElementById("selectAllPending");
+    if (selectAllCheckbox) {
+      const allCbs = document.querySelectorAll(".pending-select-cb");
+      const allChecked = [...allCbs].every(cb => cb.checked);
+      selectAllCheckbox.checked = allCbs.length > 0 && allChecked;
+    }
+  }
+});
+
 activeBookingTableBody.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -882,6 +1182,15 @@ activeBookingTableBody.addEventListener("click", async (event) => {
   }
 
   if (button.dataset.action === "approve") {
+    // Modification 4: Popup check confirmation for Al Jamea groups
+    if (booking) {
+      const venue = state.venues.find(v => v.id === booking.venueId);
+      if (venue && venue.details === "Jamea") {
+        const confirmed = window.confirm(`This booking is at "${venue.name}" (Venue Group: Jamea).\n\nIs the approval taken from Al Jamea?`);
+        if (!confirmed) return;
+      }
+    }
+
     try {
       await api(`/api/bookings/${bookingId}/approve`, {
         method: "POST",
@@ -994,6 +1303,6 @@ bootstrap().catch((error) => {
 window.addEventListener("beforeunload", (event) => {
   if (state.token) {
     event.preventDefault();
-    event.returnValue = ""; // Standard trigger required by modern browsers to show the confirmation box
+    event.returnValue = ""; 
   }
 });
