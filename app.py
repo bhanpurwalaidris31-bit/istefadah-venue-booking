@@ -55,11 +55,43 @@ TIME_SLOTS = [
     "22:30-23:00",
 ]
 
+# Upgraded to your specific seed venues and details groups
 FALLBACK_VENUES = [
-    ("Main Auditorium", 300, "Stage, projector, central audio"),
-    ("Conference Hall A", 80, "Boardroom seating, TV display"),
-    ("Conference Hall B", 40, "Classroom seating, screen"),
-    ("Training Room", 25, "Portable projector, whiteboard"),
+    ("Rabvat jiblah", 250, "Jamea"),
+    ("Faiz e Saiffee 1st floor", 300, "Qubba Mubaraka"),
+    ("Faiz e Saiffee 2nd floor", 300, "Qubba Mubaraka"),
+    ("Qadri hall", 400, "Begampura"),
+    ("Madrasah Taiyebyah 1st basement", 500, "Begampura"),
+    ("Faiz e Saiffee 3rd floor", 300, "Qubba Mubaraka"),
+    ("Fatemi Masjid Niswan", 400, "Jamea"),
+    ("Auditorium", 500, "Jamea"),
+    ("Evan ul Barakaat", 1000, "Jamea"),
+    ("Fatemi Masjid", 500, "Jamea"),
+    ("Qism u Nawaderaat", 200, "Jamea"),
+    ("Mahad uz Zahra Qa'at", 250, "Jamea"),
+    ("Gurfa Mubaraka", 50, "Jamea"),
+    ("Tabiq 4", 700, "Jamea"),
+    ("Tabiq 5", 500, "Jamea"),
+    ("Khaimat ur riyadat Marquee 1", 1500, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 2", 1500, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 3", 700, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 4", 700, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 5", 700, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 6", 700, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 7", 1400, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 8", 800, "Khaimat ur riyazat"),
+    ("Khaimat ur riyadat Marquee 9", 800, "Khaimat ur riyazat"),
+    ("Hadiaqat e Mufaddal Gr flr hall 1", 1000, "Begumwadi"),
+    ("Hadiaqat e Mufaddal Gr flr hall 2", 1000, "Begumwadi"),
+    ("Hadiaqat e Mufaddal first flr hall 1", 1000, "Begumwadi"),
+    ("Hadiaqat e Mufaddal first flr hall 2", 1000, "Begumwadi"),
+    ("Hadiaqat e Mufaddal second flr hall 1", 1000, "Begumwadi"),
+    ("Hadiaqat e Mufaddal second flr hall 2", 1000, "Begumwadi"),
+    ("Hadiaqat e Mufaddal third flr hall", 1000, "Begumwadi"),
+    ("Husaina Hall, Husaini Manzil", 250, "Bilal Gali"),
+    ("Masjid e Moazzam", 1500, "Masjid e Moazzam"),
+    ("Class Room 413", 50, "Jamea"),
+    ("Najmi Masjid", 1000, "Begampura"),
 ]
 
 USERS = [
@@ -450,12 +482,14 @@ def generate_booking_code() -> str:
     return f"IVB-{secrets.token_hex(3).upper()}"
 
 
+# Enhanced to allow ignoring matching booking codes for updates
 def find_conflicts(
     conn: PostgresConnectionWrapper,
     venue_id: int,
     time_slot: str,
     dates: list[str],
     ignore_booking_id: int | None = None,
+    ignore_booking_code: str | None = None,
 ) -> list[dict]:
     update_completed_bookings(conn)
     conflicts: list[dict] = []
@@ -474,6 +508,10 @@ def find_conflicts(
         if ignore_booking_id is not None:
             query += " AND b.id != %s"
             params.append(ignore_booking_id)
+        if ignore_booking_code is not None:
+            query += " AND b.booking_code != %s"
+            params.append(ignore_booking_code)
+            
         row = conn.execute(query, params).fetchone()
         if row:
             conflicts.append(
@@ -497,10 +535,11 @@ def collect_slot_conflicts(
     time_slots: list[str],
     dates: list[str],
     ignore_booking_id: int | None = None,
+    ignore_booking_code: str | None = None,
 ) -> list[dict]:
     conflicts: list[dict] = []
     for time_slot in time_slots:
-        conflicts.extend(find_conflicts(conn, venue_id, time_slot, dates, ignore_booking_id))
+        conflicts.extend(find_conflicts(conn, venue_id, time_slot, dates, ignore_booking_id, ignore_booking_code))
     return conflicts
 
 
@@ -520,15 +559,26 @@ def fetch_bookings(conn: PostgresConnectionWrapper, user: dict | None = None) ->
     return [serialize_booking(row) for row in conn.execute(query, params)]
 
 
+# Modification 1: Adding Requirements to Exported Reports
 def render_office_table(bookings: list[dict], title: str) -> str:
     active_bookings = [b for b in bookings if b["status"] in ("pending", "approved")]
     history_bookings = [b for b in bookings if b["status"] in ("completed", "cancelled")]
 
     def make_rows(items: list[dict]) -> str:
         if not items:
-            return "<tr><td colspan='8'>No bookings found.</td></tr>"
+            return "<tr><td colspan='9'>No bookings found.</td></tr>"
         rows = []
         for booking in items:
+            # Format requirements elegantly
+            avit = booking.get("avitRequirements", [])
+            sitting = booking.get("sittingArrangements", [])
+            req_parts = []
+            if avit:
+                req_parts.append(f"AVIT: {', '.join(avit)}")
+            if sitting:
+                req_parts.append(f"Sitting: {', '.join(sitting)}")
+            req_str = " | ".join(req_parts) if req_parts else "—"
+
             rows.append(
                 f"""
                 <tr>
@@ -539,6 +589,7 @@ def render_office_table(bookings: list[dict], title: str) -> str:
                   <td>{booking['bookedBy']}</td>
                   <td>{booking['purpose']}</td>
                   <td>{booking['audienceCount']}</td>
+                  <td>{req_str}</td>
                   <td>{booking['status']}</td>
                 </tr>
                 """
@@ -554,6 +605,7 @@ def render_office_table(bookings: list[dict], title: str) -> str:
       <th>Booked By</th>
       <th>Purpose</th>
       <th>Audience</th>
+      <th>Requirements</th>
       <th>Status</th>
     </tr>
     """
@@ -846,6 +898,7 @@ class AppHandler(BaseHTTPRequestHandler):
             ).fetchall()
         self.json_response({"notifications": [serialize_notification(row) for row in rows]})
 
+    # Modification 2: Creating a single booking code per continuous layout submission block
     def handle_create_bookings(self) -> None:
         user = self.require_ready_user()
         if not user:
@@ -942,6 +995,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
 
             created_ids: list[int] = []
+            booking_code = generate_booking_code()  # Generated once per block submission
             for booking_date, time_slot in final_pairs:
                 cursor = conn.execute(
                     """
@@ -953,7 +1007,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     RETURNING id
                     """,
                     (
-                        generate_booking_code(),
+                        booking_code,
                         user["id"],
                         venue_id,
                         booking_date,
@@ -998,6 +1052,7 @@ class AppHandler(BaseHTTPRequestHandler):
             HTTPStatus.CREATED,
         )
 
+    # Modification 2: Upgraded editing support to edit contiguous slot blocks cleanly
     def handle_update_booking(self, path: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1021,15 +1076,23 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            booking_code = booking["booking_code"]
+
             new_venue_id = int(payload.get("venueId", booking["venue_id"]))
-            new_date = payload.get("bookingDate", booking["booking_date"]).strip()
-            new_time_slot = payload.get("timeSlot", booking["time_slot"]).strip()
             new_purpose = payload.get("purpose", booking["purpose"]).strip()
             new_audience_count = int(payload.get("audienceCount", booking["audience_count"]))
             new_audience_details = payload.get("audienceDetails", booking["audience_details"] or "").strip()
             new_avit = payload.get("avitRequirements", json.loads(booking["avit_requirements"] or "[]"))
             new_sitting = payload.get("sittingArrangements", json.loads(booking["sitting_arrangements"] or "[]"))
             new_booked_by = payload.get("bookedBy", booking["booked_by"]).strip()
+
+            dates = sorted(set(payload.get("dates", [booking["booking_date"]])))
+            raw_time_slots = payload.get("timeSlots")
+            if isinstance(raw_time_slots, list):
+                time_slots = sorted({str(item).strip() for item in raw_time_slots if str(item).strip()})
+            else:
+                fallback_time_slot = payload.get("timeSlot", booking["time_slot"]).strip()
+                time_slots = [fallback_time_slot] if fallback_time_slot else []
 
             venue = conn.execute(
                 "SELECT * FROM venues WHERE id = %s AND is_active = 1",
@@ -1049,52 +1112,67 @@ class AppHandler(BaseHTTPRequestHandler):
                     HTTPStatus.BAD_REQUEST,
                 )
                 return
-            conflicts = find_conflicts(conn, new_venue_id, new_time_slot, [new_date], ignore_booking_id=booking_id)
+
+            # Check conflicts, ignoring current records sharing the target booking_code
+            conflicts = collect_slot_conflicts(conn, new_venue_id, time_slots, dates, ignore_booking_code=booking_code)
             if conflicts:
                 self.json_response({"error": conflicts[0]["message"]}, HTTPStatus.CONFLICT)
                 return
 
-            conn.execute(
-                """
-                UPDATE bookings
-                SET venue_id = %s, booking_date = %s, time_slot = %s, booked_by = %s, purpose = %s,
-                    audience_count = %s, audience_details = %s, avit_requirements = %s,
-                    sitting_arrangements = %s, updated_at = %s, updated_by_user_id = %s
-                WHERE id = %s
-                """,
-                (
-                    new_venue_id,
-                    new_date,
-                    new_time_slot,
-                    new_booked_by,
-                    new_purpose,
-                    new_audience_count,
-                    new_audience_details,
-                    json.dumps(new_avit),
-                    json.dumps(new_sitting),
-                    utc_iso(),
-                    user["id"],
-                    booking_id,
-                ),
-            )
-            refreshed = fetch_booking(conn, booking_id)
+            # Atomically delete legacy blocks and re-insert the updated block layout
+            conn.execute("DELETE FROM bookings WHERE booking_code = %s", (booking_code,))
+
+            created_ids = []
+            for booking_date in dates:
+                for time_slot in time_slots:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO bookings (
+                            booking_code, user_id, venue_id, booking_date, time_slot, booked_by,
+                            purpose, audience_count, audience_details, avit_requirements,
+                            status, sitting_arrangements, created_at, updated_at, updated_by_user_id
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            booking_code,
+                            booking["user_id"],
+                            new_venue_id,
+                            booking_date,
+                            time_slot,
+                            new_booked_by,
+                            new_purpose,
+                            new_audience_count,
+                            new_audience_details,
+                            json.dumps(new_avit),
+                            booking["status"],
+                            json.dumps(new_sitting),
+                            booking["created_at"],
+                            utc_iso(),
+                            user["id"],
+                        ),
+                    )
+                    created_ids.append(cursor.fetchone()["id"])
+
+            refreshed = fetch_booking(conn, created_ids[0])
             if refreshed:
                 # Sync updated details to Google Sheets
                 sync_to_google_sheet(serialize_booking(refreshed))
                 add_notification(
                     conn,
                     booking["user_id"],
-                    f"Booking {booking['booking_code']} was updated by {user['name']}.",
+                    f"Booking {booking_code} was updated by {user['name']}.",
                 )
                 for admin_id in get_admin_ids(conn):
                     if admin_id != user["id"]:
                         add_notification(
                             conn,
                             admin_id,
-                            f"Booking {booking['booking_code']} was updated by {user['name']}.",
+                            f"Booking {booking_code} was updated by {user['name']}.",
                         )
         self.json_response({"message": "Booking updated successfully.", "booking": serialize_booking(refreshed)})
 
+    # Modification 2: Upgraded cancel logic to cancel all elements in contiguous block
     def handle_delete_booking(self, path: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1111,9 +1189,10 @@ class AppHandler(BaseHTTPRequestHandler):
                     HTTPStatus.FORBIDDEN,
                 )
                 return
+            booking_code = booking["booking_code"]
             conn.execute(
-                "UPDATE bookings SET status = 'cancelled', updated_at = %s, updated_by_user_id = %s WHERE id = %s",
-                (utc_iso(), user["id"], booking_id),
+                "UPDATE bookings SET status = 'cancelled', updated_at = %s, updated_by_user_id = %s WHERE booking_code = %s",
+                (utc_iso(), user["id"], booking_code),
             )
             updated_booking = fetch_booking(conn, booking_id)
             if updated_booking:
@@ -1133,6 +1212,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         )
         self.json_response({"message": "Booking cancelled successfully."})
 
+    # Modification 2: Upgraded approval logic to approve all blocks sharing this booking code
     def handle_approve_booking(self, path: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1149,19 +1229,25 @@ class AppHandler(BaseHTTPRequestHandler):
             if booking["status"] != "pending":
                 self.json_response({"error": "Only pending bookings can be approved."}, HTTPStatus.BAD_REQUEST)
                 return
-            conflicts = find_conflicts(
-                conn,
-                booking["venue_id"],
-                booking["time_slot"],
-                [booking["booking_date"]],
-                ignore_booking_id=booking_id,
-            )
-            if conflicts:
-                self.json_response({"error": conflicts[0]["message"]}, HTTPStatus.CONFLICT)
-                return
+
+            booking_code = booking["booking_code"]
+            bookings_to_approve = conn.execute("SELECT * FROM bookings WHERE booking_code = %s", (booking_code,)).fetchall()
+
+            for b in bookings_to_approve:
+                conflicts = find_conflicts(
+                    conn,
+                    b["venue_id"],
+                    b["time_slot"],
+                    [b["booking_date"]],
+                    ignore_booking_id=b["id"],
+                )
+                if conflicts:
+                    self.json_response({"error": conflicts[0]["message"]}, HTTPStatus.CONFLICT)
+                    return
+
             conn.execute(
-                "UPDATE bookings SET status = 'approved', updated_at = %s, updated_by_user_id = %s WHERE id = %s",
-                (utc_iso(), user["id"], booking_id),
+                "UPDATE bookings SET status = 'approved', updated_at = %s, updated_by_user_id = %s WHERE booking_code = %s",
+                (utc_iso(), user["id"], booking_code),
             )
             refreshed = fetch_booking(conn, booking_id)
             if refreshed:
@@ -1443,6 +1529,7 @@ class AppHandler(BaseHTTPRequestHandler):
             conn.execute("DELETE FROM bookings")
         self.json_response({"message": "All database bookings cleared successfully."})
 
+    # Modification 1: Formatting Requirements inside Exporters
     def handle_export(self, query: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1460,8 +1547,16 @@ class AppHandler(BaseHTTPRequestHandler):
             history_bookings = [b for b in bookings if b["status"] in ("completed", "cancelled")]
 
             writer.writerow(["--- ACTIVE BOOKINGS (PENDING & APPROVED) ---"])
-            writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Status"])
+            writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Requirements", "Status"])
             for booking in active_bookings:
+                avit = booking.get("avitRequirements", [])
+                sitting = booking.get("sittingArrangements", [])
+                req_parts = []
+                if avit:
+                    req_parts.append(f"AVIT: {', '.join(avit)}")
+                if sitting:
+                    req_parts.append(f"Sitting: {', '.join(sitting)}")
+                req_str = " | ".join(req_parts) if req_parts else "—"
                 writer.writerow(
                     [
                         booking["bookingCode"],
@@ -1471,14 +1566,23 @@ class AppHandler(BaseHTTPRequestHandler):
                         booking["bookedBy"],
                         booking["purpose"],
                         booking["audienceCount"],
+                        req_str,
                         booking["status"],
                     ]
                 )
             
             writer.writerow([])
             writer.writerow(["--- PREVIOUS BOOKING HISTORY (COMPLETED & CANCELLED) ---"])
-            writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Status"])
+            writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Requirements", "Status"])
             for booking in history_bookings:
+                avit = booking.get("avitRequirements", [])
+                sitting = booking.get("sittingArrangements", [])
+                req_parts = []
+                if avit:
+                    req_parts.append(f"AVIT: {', '.join(avit)}")
+                if sitting:
+                    req_parts.append(f"Sitting: {', '.join(sitting)}")
+                req_str = " | ".join(req_parts) if req_parts else "—"
                 writer.writerow(
                     [
                         booking["bookingCode"],
@@ -1488,6 +1592,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         booking["bookedBy"],
                         booking["purpose"],
                         booking["audienceCount"],
+                        req_str,
                         booking["status"],
                     ]
                 )
