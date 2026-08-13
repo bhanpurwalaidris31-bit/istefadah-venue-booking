@@ -65,7 +65,12 @@ const printReportBtn = document.getElementById("printReportBtn");
 const clearLogsBtn = document.getElementById("clearLogsBtn");
 const adminClearBookingsBtn = document.getElementById("adminClearBookingsBtn");
 
-// Dynamic Toast system definition
+// Edit helpers
+const editModeHelperEl = document.getElementById("editModeHelper");
+const editingCodeDisplayEl = document.getElementById("editingCodeDisplay");
+const editChangeDateBtn = document.getElementById("editChangeDateBtn");
+const editChangeTimeBtn = document.getElementById("editChangeTimeBtn");
+
 function showToast(message, type = "info") {
   let container = document.getElementById("toast-container");
   if (!container) {
@@ -213,7 +218,6 @@ function getHistoryBookings() {
   );
 }
 
-// Modification 1: Formatting Requirements for UI Table Display
 function formatRequirements(booking) {
   const avit = booking.avitRequirements || [];
   const sitting = booking.sittingArrangements || [];
@@ -227,7 +231,6 @@ function formatRequirements(booking) {
   return parts.length > 0 ? parts.join(" | ") : "—";
 }
 
-// Modification 2: Helper algorithm to merge contiguous 30min time slots
 function mergeTimeSlots(slots) {
   if (!slots || slots.length === 0) return "";
   const sorted = [...slots].sort((a, b) => {
@@ -257,94 +260,93 @@ function mergeTimeSlots(slots) {
   return merged.join(", ");
 }
 
-// Modification 2: Helper algorithm to merge contiguous calendar dates
-function mergeDates(dates) {
-  if (!dates || dates.length === 0) return "";
+function getContinuousBlocks(dates) {
   const sorted = [...new Set(dates)].sort();
-  const merged = [];
-  
-  let rangeStart = null;
-  let rangeEnd = null;
-  
+  const blocks = [];
+  let currentBlock = [];
   for (const dStr of sorted) {
-    if (rangeStart === null) {
-      rangeStart = dStr;
-      rangeEnd = dStr;
+    if (currentBlock.length === 0) {
+      currentBlock.push(dStr);
     } else {
-      const prevDate = new Date(`${rangeEnd}T00:00:00`);
+      const prevDate = new Date(`${currentBlock[currentBlock.length - 1]}T00:00:00`);
       prevDate.setDate(prevDate.getDate() + 1);
       const expectedStr = prevDate.toISOString().slice(0, 10);
       if (dStr === expectedStr) {
-        rangeEnd = dStr;
+        currentBlock.push(dStr);
       } else {
-        if (rangeStart === rangeEnd) {
-          merged.push(rangeStart);
-        } else {
-          merged.push(`${rangeStart} to ${rangeEnd}`);
-        }
-        rangeStart = dStr;
-        rangeEnd = dStr;
+        blocks.push(currentBlock);
+        currentBlock = [dStr];
       }
     }
   }
-  if (rangeStart !== null) {
-    if (rangeStart === rangeEnd) {
-      merged.push(rangeStart);
-    } else {
-      merged.push(`${rangeStart} to ${rangeEnd}`);
-    }
+  if (currentBlock.length > 0) {
+    blocks.push(currentBlock);
   }
-  return merged.join(", ");
+  return blocks;
 }
 
-// Modification 2: Grouping bookings by matching booking_code
 function clubBookings(bookingsList) {
-  const groups = {};
+  const codeGroups = {};
   for (const b of bookingsList) {
     const code = b.bookingCode || `GEN-${b.id}`;
-    if (!groups[code]) {
-      groups[code] = {
-        id: b.id,
-        ids: [b.id],
-        bookingCode: b.bookingCode,
-        userId: b.userId,
-        bookedBy: b.bookedBy,
-        ownerName: b.ownerName,
-        ownerEmail: b.ownerEmail,
-        venueId: b.venueId,
-        venueName: b.venueName,
-        venueCapacity: b.venueCapacity,
-        purpose: b.purpose,
-        audienceCount: b.audienceCount,
-        audienceDetails: b.audienceDetails,
-        avitRequirements: b.avitRequirements,
-        sittingArrangements: b.sittingArrangements,
-        status: b.status,
-        createdAt: b.createdAt,
-        updatedAt: b.updatedAt,
-        dates: [b.bookingDate],
-        timeSlots: [b.timeSlot]
-      };
-    } else {
-      groups[code].ids.push(b.id);
-      if (!groups[code].dates.includes(b.bookingDate)) {
-        groups[code].dates.push(b.bookingDate);
-      }
-      if (!groups[code].timeSlots.includes(b.timeSlot)) {
-        groups[code].timeSlots.push(b.timeSlot);
-      }
+    if (!codeGroups[code]) {
+      codeGroups[code] = [];
+    }
+    codeGroups[code].push(b);
+  }
+
+  const resultRows = [];
+
+  for (const code of Object.keys(codeGroups)) {
+    const items = codeGroups[code];
+    const dates = items.map(item => item.bookingDate);
+    const dateBlocks = getContinuousBlocks(dates);
+
+    for (const block of dateBlocks) {
+      const blockItems = items.filter(item => block.includes(item.bookingDate));
+      const slots = [...new Set(blockItems.map(item => item.timeSlot))];
+      
+      const startTimes = slots.map(s => s.split("-")[0]);
+      const endTimes = slots.map(s => s.split("-")[1]);
+      startTimes.sort();
+      endTimes.sort();
+
+      const startTime = startTimes[0] || "—";
+      const endTime = endTimes[endTimes.length - 1] || "—";
+      const fromDate = block[0];
+      const toDate = block[block.length - 1];
+      const ref = blockItems[0];
+
+      resultRows.push({
+        id: ref.id,
+        ids: blockItems.map(item => item.id),
+        bookingCode: ref.bookingCode,
+        userId: ref.userId,
+        bookedBy: ref.bookedBy,
+        ownerName: ref.ownerName,
+        ownerEmail: ref.ownerEmail,
+        venueId: ref.venueId,
+        venueName: ref.venueName,
+        venueCapacity: ref.venueCapacity,
+        purpose: ref.purpose,
+        audienceCount: ref.audienceCount,
+        audienceDetails: ref.audienceDetails,
+        avitRequirements: ref.avitRequirements,
+        sittingArrangements: ref.sittingArrangements,
+        status: ref.status,
+        createdAt: ref.createdAt,
+        updatedAt: ref.updatedAt,
+        fromDate: fromDate,
+        toDate: toDate,
+        startTime: startTime,
+        endTime: endTime,
+        rawDates: block,
+        rawTimeSlots: slots.sort()
+      });
     }
   }
 
-  return Object.values(groups).map(g => {
-    return {
-      ...g,
-      bookingDate: mergeDates(g.dates),
-      timeSlot: mergeTimeSlots(g.timeSlots),
-      rawDates: g.dates.sort(),
-      rawTimeSlots: g.timeSlots.sort()
-    };
-  });
+  return resultRows;
 }
 
 function sortActiveBookings(bookings) {
@@ -352,15 +354,13 @@ function sortActiveBookings(bookings) {
   return [...bookings].sort((left, right) => {
     let result = 0;
     if (state.activeSort === "date") {
-      const leftDate = left.rawDates ? left.rawDates[0] : left.bookingDate;
-      const rightDate = right.rawDates ? right.rawDates[0] : right.bookingDate;
-      result = compareValues(leftDate, rightDate) || compareValues(left.timeSlot, right.timeSlot);
+      result = compareValues(left.fromDate, right.fromDate) || compareValues(left.startTime, right.startTime);
     } else if (state.activeSort === "time") {
-      result = compareValues(left.timeSlot, right.timeSlot) || compareValues(left.bookingDate, right.bookingDate);
+      result = compareValues(left.startTime, right.startTime) || compareValues(left.fromDate, right.fromDate);
     } else if (state.activeSort === "venue") {
-      result = compareValues(left.venueName, right.venueName) || compareValues(left.bookingDate, right.bookingDate);
+      result = compareValues(left.venueName, right.venueName) || compareValues(left.fromDate, right.fromDate);
     } else if (state.activeSort === "user") {
-      result = compareValues(left.bookedBy, right.bookedBy) || compareValues(left.bookingDate, right.bookingDate);
+      result = compareValues(left.bookedBy, right.bookedBy) || compareValues(left.fromDate, right.fromDate);
     }
     return result * factor;
   });
@@ -384,21 +384,81 @@ function updateDateModeUi() {
   addRangeBtn.classList.toggle("hidden", isSingle);
 }
 
-// Modification 5: Dynamically building unique filter categories
-function populateVenueDetailFilter() {
-  const filterEl = document.getElementById("venueDetailFilter");
-  if (!filterEl) return;
-  const details = [...new Set(state.venues.map(v => v.details).filter(Boolean))].sort();
-  const currentSelection = filterEl.value || "all";
-  
-  filterEl.innerHTML = `<option value="all">All Groups / Venues</option>` +
-    details.map(detail => `<option value="${detail}">${detail}</option>`).join("");
-    
-  if (currentSelection === "all" || details.includes(currentSelection)) {
-    filterEl.value = currentSelection;
-  } else {
-    filterEl.value = "all";
+function populateTableFilters() {
+  const venueFilterEl = document.getElementById("venueDetailFilter");
+  if (venueFilterEl) {
+    const details = [...new Set(state.venues.map(v => v.details).filter(Boolean))].sort();
+    const currentSelection = venueFilterEl.value || "all";
+    venueFilterEl.innerHTML = `<option value="all">All Groups</option>` +
+      details.map(detail => `<option value="${detail}">${detail}</option>`).join("");
+    venueFilterEl.value = details.includes(currentSelection) ? currentSelection : "all";
   }
+
+  const userFilterEl = document.getElementById("userDetailFilter");
+  if (userFilterEl) {
+    // Only fetch non-scrubbed usernames for standard users
+    const users = [...new Set(state.bookings.map(b => b.bookedBy).filter(b => b !== "Unavailable Slot"))].sort();
+    const currentSelection = userFilterEl.value || "all";
+    userFilterEl.innerHTML = `<option value="all">All Users</option>` +
+      users.map(u => `<option value="${u}">${u}</option>`).join("");
+    userFilterEl.value = users.includes(currentSelection) ? currentSelection : "all";
+  }
+
+  const dateFilterEl = document.getElementById("dateDetailFilter");
+  if (dateFilterEl) {
+    let allDates = [];
+    state.bookings.forEach(b => {
+      if (b.rawDates && b.rawDates.length) {
+        allDates.push(...b.rawDates);
+      } else if (b.bookingDate) {
+        allDates.push(b.bookingDate);
+      }
+    });
+    const uniqueDates = [...new Set(allDates)].filter(Boolean).sort();
+    const currentSelection = dateFilterEl.value || "all";
+    dateFilterEl.innerHTML = `<option value="all">All Dates</option>` +
+      uniqueDates.map(d => `<option value="${d}">${d}</option>`).join("");
+    dateFilterEl.value = uniqueDates.includes(currentSelection) ? currentSelection : "all";
+  }
+}
+
+function updateVenueBusyTimes() {
+  const venueId = Number(venueIdEl.value);
+  const busyTimesEl = document.getElementById("venueBusyTimes");
+  if (!busyTimesEl) return;
+  if (!venueId) {
+    busyTimesEl.textContent = "Select a venue to check unavailable slots...";
+    return;
+  }
+
+  const activeBookings = state.bookings.filter(
+    (b) => b.venueId === venueId && (b.status === "approved" || b.status === "pending")
+  );
+
+  if (!activeBookings.length) {
+    busyTimesEl.textContent = "All dates and time slots are currently open!";
+    return;
+  }
+
+  const schedule = {};
+  activeBookings.forEach((b) => {
+    const date = b.bookingDate;
+    if (!schedule[date]) {
+      schedule[date] = [];
+    }
+    if (!schedule[date].includes(b.timeSlot)) {
+      schedule[date].push(b.timeSlot);
+    }
+  });
+
+  const lines = [];
+  const sortedDates = Object.keys(schedule).sort();
+  sortedDates.forEach((date) => {
+    const mergedSlots = mergeTimeSlots(schedule[date]);
+    lines.push(`• ${date}: ${mergedSlots}`);
+  });
+
+  busyTimesEl.innerHTML = lines.map(line => `<div style="margin-bottom:2px;">${escapeHtml(line)}</div>`).join("");
 }
 
 function populateBootstrap(data) {
@@ -409,7 +469,7 @@ function populateBootstrap(data) {
     .map((venue) => `<option value="${venue.id}">${venue.name} (${venue.capacity})</option>`)
     .join("");
   renderTimeSlots();
-  populateVenueDetailFilter();
+  populateTableFilters();
 }
 
 function updateTimeSlotSummary() {
@@ -428,6 +488,8 @@ function getSlotAvailability(slot) {
   const venueId = Number(venueIdEl.value);
   const selectedDates = parseDates();
   const editId = Number(bookingForm.dataset.editId || 0);
+  const editCode = bookingForm.dataset.editCode || "";
+  
   if (!venueId || !selectedDates.length) {
     return { status: "open", conflicts: 0 };
   }
@@ -436,6 +498,7 @@ function getSlotAvailability(slot) {
     state.bookings.some(
       (booking) =>
         booking.id !== editId &&
+        booking.bookingCode !== editCode &&
         (booking.status === "approved" || booking.status === "pending") &&
         booking.venueId === venueId &&
         booking.timeSlot === slot &&
@@ -495,7 +558,6 @@ function canManageBooking(booking) {
   return hoursElapsed <= 6;
 }
 
-// Modification 3: Reset bulk banner status
 function updateBulkActionsBar() {
   const bulkBar = document.getElementById("bulkAdminActions");
   if (!bulkBar) return;
@@ -503,36 +565,59 @@ function updateBulkActionsBar() {
   bulkBar.classList.toggle("hidden", !anyChecked);
 }
 
-// Modification 1, 2, 3, 5: Main integrated render block
 function renderBookings() {
-  const filterEl = document.getElementById("venueDetailFilter");
-  const selectedDetail = filterEl ? filterEl.value : "all";
+  const venueFilterEl = document.getElementById("venueDetailFilter");
+  const userFilterEl = document.getElementById("userDetailFilter");
+  const dateFilterEl = document.getElementById("dateDetailFilter");
+
+  const selectedVenueDetail = venueFilterEl ? venueFilterEl.value : "all";
+  const selectedUser = userFilterEl ? userFilterEl.value : "all";
+  const selectedDate = dateFilterEl ? dateFilterEl.value : "all";
 
   let rawActive = getActiveBookings();
   let rawHistory = getHistoryBookings();
 
-  // Modification 5: Filtering visible bookings based on details grouping select element
-  if (selectedDetail !== "all") {
+  const isAdmin = state.currentUser && state.currentUser.role === "admin";
+
+  // Safeguard: standard users should only view their personal bookings in active/history display tables
+  if (!isAdmin) {
+    rawActive = rawActive.filter(b => b.userId === state.currentUser.id);
+    rawHistory = rawHistory.filter(b => b.userId === state.currentUser.id);
+  }
+
+  if (selectedVenueDetail !== "all") {
     rawActive = rawActive.filter(b => {
       const venue = state.venues.find(v => v.id === b.venueId);
-      return venue && venue.details === selectedDetail;
+      return venue && venue.details === selectedVenueDetail;
     });
     rawHistory = rawHistory.filter(b => {
       const venue = state.venues.find(v => v.id === b.venueId);
-      return venue && venue.details === selectedDetail;
+      return venue && venue.details === selectedVenueDetail;
     });
   }
 
-  // Modification 2: Applying slot aggregation layout
+  if (selectedUser !== "all") {
+    rawActive = rawActive.filter(b => b.bookedBy === selectedUser);
+    rawHistory = rawHistory.filter(b => b.bookedBy === selectedUser);
+  }
+
+  if (selectedDate !== "all") {
+    rawActive = rawActive.filter(b => {
+      if (b.rawDates) return b.rawDates.includes(selectedDate);
+      return b.bookingDate === selectedDate;
+    });
+    rawHistory = rawHistory.filter(b => {
+      if (b.rawDates) return b.rawDates.includes(selectedDate);
+      return b.bookingDate === selectedDate;
+    });
+  }
+
   const activeBookings = sortActiveBookings(clubBookings(rawActive));
   const historyBookings = clubBookings(rawHistory);
 
   metricBookings.textContent = `${activeBookings.length}`;
   metricHistory.textContent = `${historyBookings.length}`;
-
-  const isAdmin = state.currentUser && state.currentUser.role === "admin";
   
-  // Modification 3: Toggle bulk actions headers
   const thSelectAll = document.getElementById("thSelectAll");
   if (thSelectAll) {
     thSelectAll.classList.toggle("hidden", !isAdmin);
@@ -557,7 +642,6 @@ function renderBookings() {
             : "";
           const cancelButton = `<button class="danger-btn" ${!canEdit ? "disabled" : ""} data-action="delete" data-id="${booking.id}">Cancel</button>`;
           
-          // Modification 3: Row checkboxes for admins
           const selectTd = isAdmin
             ? `<td class="select-col-td" style="text-align: center; vertical-align: middle;">
                 ${booking.status === 'pending' ? `<input type="checkbox" class="pending-select-cb" data-id="${booking.ids.join(',')}" style="transform: scale(1.15); cursor: pointer;" />` : '—'}
@@ -567,39 +651,43 @@ function renderBookings() {
           return `
             <tr>
               ${selectTd}
-              <td>${escapeHtml(booking.bookingDate)}</td>
-              <td>${escapeHtml(booking.timeSlot)}</td>
+              <td>${escapeHtml(booking.fromDate)}</td>
+              <td>${escapeHtml(booking.toDate)}</td>
+              <td>${escapeHtml(booking.startTime)}</td>
+              <td>${escapeHtml(booking.endTime)}</td>
               <td>${escapeHtml(booking.venueName)}</td>
               <td>${escapeHtml(booking.bookedBy)}</td>
               <td>${escapeHtml(booking.purpose)}</td>
               <td>${escapeHtml(String(booking.audienceCount))}</td>
-              <td>${escapeHtml(formatRequirements(booking))}</td> <!-- Modification 1 -->
+              <td>${escapeHtml(formatRequirements(booking))}</td>
               <td><span class="status-pill status-${booking.status}">${escapeHtml(booking.status)}</span></td>
               <td><div class="table-actions">${approveButton}${revertButton}${editButton}${cancelButton}</div></td>
             </tr>
           `;
         })
         .join("")
-    : `<tr><td colspan="${isAdmin ? '10' : '9'}">No bookings found.</td></tr>`;
+    : `<tr><td colspan="${isAdmin ? '12' : '11'}">No bookings found.</td></tr>`;
 
   historyBookingTableBody.innerHTML = historyBookings.length
     ? historyBookings
         .map(
           (booking) => `
             <tr>
-              <td>${escapeHtml(booking.bookingDate)}</td>
-              <td>${escapeHtml(booking.timeSlot)}</td>
+              <td>${escapeHtml(booking.fromDate)}</td>
+              <td>${escapeHtml(booking.toDate)}</td>
+              <td>${escapeHtml(booking.startTime)}</td>
+              <td>${escapeHtml(booking.endTime)}</td>
               <td>${escapeHtml(booking.venueName)}</td>
               <td>${escapeHtml(booking.bookedBy)}</td>
               <td>${escapeHtml(booking.purpose)}</td>
               <td>${escapeHtml(String(booking.audienceCount))}</td>
-              <td>${escapeHtml(formatRequirements(booking))}</td> <!-- Modification 1 -->
+              <td>${escapeHtml(formatRequirements(booking))}</td>
               <td><span class="status-pill status-${booking.status}">${escapeHtml(booking.status)}</span></td>
             </tr>
           `
         )
         .join("")
-    : `<tr><td colspan="8">No booking history found.</td></tr>`;
+    : `<tr><td colspan="10">No booking history found.</td></tr>`;
 
   tableTag.textContent = isAdmin ? "All Bookings" : "My Bookings";
   tableTitle.textContent = isAdmin ? "Approval and active bookings" : "Your pending and approved bookings";
@@ -608,6 +696,7 @@ function renderBookings() {
     : "Pending bookings can be edited for 6 hours. Approved bookings are locked from editing.";
   historyMessage.textContent = "Cancelled records are shown here.";
   updateSortIndicators();
+  updateVenueBusyTimes();
 }
 
 function renderNotifications() {
@@ -746,7 +835,6 @@ function showLogin() {
   state.currentUser = null;
 }
 
-// Modification 2: Upgrading layout edit mapping support
 function fillBookingForm(booking) {
   bookedByEl.value = booking.bookedBy;
   document.getElementById("purpose").value = booking.purpose;
@@ -756,15 +844,28 @@ function fillBookingForm(booking) {
   document.getElementById("audienceCount").value = booking.audienceCount;
   setCheckedValues("avitOptions", booking.avitRequirements);
   setCheckedValues("sittingOptions", booking.sittingArrangements);
+  
   bookingForm.dataset.editId = booking.id;
+  bookingForm.dataset.editCode = booking.bookingCode;
+  
+  editModeHelperEl.classList.remove("hidden");
+  editingCodeDisplayEl.textContent = booking.bookingCode;
+
   renderSelectedDates();
   renderTimeSlots();
   setMessage(bookingMessage, `Editing pending booking ${booking.bookingCode}. Submit to save changes.`, "success");
+  
+  bookingSection.scrollIntoView({ behavior: "smooth" });
 }
 
 function resetBookingForm() {
   bookingForm.reset();
   delete bookingForm.dataset.editId;
+  delete bookingForm.dataset.editCode;
+  
+  editModeHelperEl.classList.add("hidden");
+  editingCodeDisplayEl.textContent = "—";
+
   bookedByEl.value = state.currentUser?.name || "";
   state.selectedTimeSlots = [];
   state.selectedDates = [];
@@ -775,6 +876,7 @@ function resetBookingForm() {
   setCheckedValues("sittingOptions", []);
   renderSelectedDates();
   renderTimeSlots();
+  updateVenueBusyTimes();
 }
 
 function addSelectedDate() {
@@ -793,6 +895,7 @@ function addSelectedDate() {
   setMessage(bookingMessage, "");
 }
 
+// Modification 9: Timezone-independent UTC date range calculations
 function addDateRange() {
   const start = rangeStartDateEl.value;
   const end = rangeEndDateEl.value;
@@ -804,13 +907,22 @@ function addDateRange() {
     showToast("End date must be after or equal to start date.", "error");
     return;
   }
-  const cursor = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
+  
+  const [startY, startM, startD] = start.split("-").map(Number);
+  const [endY, endM, endD] = end.split("-").map(Number);
+  
+  const cursor = new Date(Date.UTC(startY, startM - 1, startD));
+  const endDate = new Date(Date.UTC(endY, endM - 1, endD));
+  
   const datesToAdd = [];
   while (cursor <= endDate) {
-    datesToAdd.push(cursor.toISOString().slice(0, 10));
-    cursor.setDate(cursor.getDate() + 1);
+    const y = cursor.getUTCFullYear();
+    const m = String(cursor.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(cursor.getUTCDate()).padStart(2, "0");
+    datesToAdd.push(`${y}-${m}-${d}`);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
+  
   state.selectedDates = [...new Set([...state.selectedDates, ...datesToAdd])].sort();
   rangeStartDateEl.value = "";
   rangeEndDateEl.value = "";
@@ -986,6 +1098,7 @@ timeSlotMenuEl.addEventListener("change", (event) => {
 
 venueIdEl.addEventListener("change", () => {
   renderTimeSlots();
+  updateVenueBusyTimes();
 });
 
 document.querySelectorAll("input[name='dateMode']").forEach((input) => {
@@ -995,12 +1108,25 @@ document.querySelectorAll("input[name='dateMode']").forEach((input) => {
   });
 });
 
-// Modification 5: Render filtered lists when filter selection changes
-document.getElementById("venueDetailFilter")?.addEventListener("change", () => {
-  renderBookings();
+document.getElementById("venueDetailFilter")?.addEventListener("change", () => renderBookings());
+document.getElementById("userDetailFilter")?.addEventListener("change", () => renderBookings());
+document.getElementById("dateDetailFilter")?.addEventListener("change", () => renderBookings());
+
+editChangeDateBtn?.addEventListener("click", () => {
+  state.selectedDates = [];
+  renderSelectedDates();
+  renderTimeSlots();
+  datePickerEl.focus();
+  showToast("Current dates cleared. You can now select new dates.", "info");
 });
 
-// Modification 3: Toggle "Select All Pending" Checkbox action
+editChangeTimeBtn?.addEventListener("click", () => {
+  state.selectedTimeSlots = [];
+  renderTimeSlots();
+  timeSlotMenuEl.classList.remove("hidden");
+  showToast("Current times cleared. You can now choose new slots.", "info");
+});
+
 document.getElementById("selectAllPending")?.addEventListener("change", (event) => {
   const checked = event.target.checked;
   document.querySelectorAll(".pending-select-cb").forEach((cb) => {
@@ -1009,7 +1135,6 @@ document.getElementById("selectAllPending")?.addEventListener("change", (event) 
   updateBulkActionsBar();
 });
 
-// Modification 3 & 4: Bulk Selection Approval Trigger
 document.getElementById("approveSelectedBtn")?.addEventListener("click", async () => {
   const checkedCbs = document.querySelectorAll(".pending-select-cb:checked");
   if (!checkedCbs.length) return;
@@ -1043,7 +1168,6 @@ document.getElementById("approveSelectedBtn")?.addEventListener("click", async (
       const booking = state.bookings.find(item => item.id === bookingId);
       if (booking) {
         const venue = state.venues.find(v => v.id === booking.venueId);
-        // Modification 4: Warning validation checkpoint for Jamea detail groups
         if (venue && venue.details === "Jamea") {
           const doubleConfirmed = window.confirm(
             `Booking Code: ${booking.bookingCode} (Booked by: ${booking.bookedBy})\n` +
@@ -1150,8 +1274,19 @@ clearLogsBtn?.addEventListener("click", async () => {
 adminClearBookingsBtn?.addEventListener("click", async () => {
   const confirmed = window.confirm("CRITICAL WARNING: Are you sure you want to permanently delete ALL bookings from the database? This cannot be undone.");
   if (!confirmed) return;
+  
+  const password = window.prompt("To verify this dangerous action, please type your admin password:");
+  if (password === null) return;
+  if (!password.trim()) {
+    showToast("Password cannot be blank.", "error");
+    return;
+  }
+
   try {
-    await api("/api/admin/bookings/clear", { method: "POST" });
+    await api("/api/admin/bookings/clear", { 
+      method: "POST",
+      body: JSON.stringify({ password })
+    });
     showToast("All bookings wiped out successfully.", "info");
     await refreshData();
   } catch (error) {
@@ -1159,7 +1294,6 @@ adminClearBookingsBtn?.addEventListener("click", async () => {
   }
 });
 
-// Modification 3 & 4: Listened changes for checkbox updates and interactive single-approvals
 activeBookingTableBody.addEventListener("change", (event) => {
   if (event.target.classList.contains("pending-select-cb")) {
     updateBulkActionsBar();
@@ -1180,12 +1314,13 @@ activeBookingTableBody.addEventListener("click", async (event) => {
   if (!booking) return;
 
   if (button.dataset.action === "edit") {
-    fillBookingForm(booking);
+    const consolidatedList = clubBookings(state.bookings);
+    const consolidatedBooking = consolidatedList.find(b => b.bookingCode === booking.bookingCode);
+    fillBookingForm(consolidatedBooking || booking);
     return;
   }
 
   if (button.dataset.action === "approve") {
-    // Modification 4: Popup check confirmation for Al Jamea groups
     if (booking) {
       const venue = state.venues.find(v => v.id === booking.venueId);
       if (venue && venue.details === "Jamea") {

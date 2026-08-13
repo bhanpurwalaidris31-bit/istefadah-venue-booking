@@ -549,6 +549,42 @@ th {
   display: none !important;
 }
 
+/* Dynamic Header Banner Style (Modification 8) */
+.header-banner {
+  width: 100%;
+  min-height: 200px;
+  background-image: linear-gradient(rgba(22, 60, 53, 0.55), rgba(22, 60, 53, 0.85)), url('/static/org-pic.jpg');
+  background-size: cover;
+  background-position: center;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  text-align: center;
+  padding: 30px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+  transition: background 0.3s ease;
+}
+
+.header-logo {
+  max-height: 70px;
+  margin-bottom: 12px;
+  object-fit: contain;
+}
+
+.header-banner h1 {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  font-weight: bold;
+  color: #7ce3d0;
+  margin: 0;
+  text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.05em;
+}
+
 @media print {
   body {
     background: white;

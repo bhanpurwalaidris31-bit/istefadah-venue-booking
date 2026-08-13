@@ -22,7 +22,8 @@
         .message,
         .hint,
         #bulkAdminActions,
-        .filter-wrap {
+        .filter-wrap,
+        .header-banner {
           display: none !important;
         }
 
@@ -166,6 +167,12 @@
         </section>
 
         <section id="appView" class="hidden">
+          <!-- Modification 8: Visual Organization Top Header Banner (Logo & Building Pic) -->
+          <div class="header-banner">
+            <img id="orgLogo" class="header-logo" src="/static/logo.png" alt="Logo" onerror="this.style.display='none';" />
+            <h1>Istefadah Venue Booking</h1>
+          </div>
+
           <div class="topbar card">
             <div>
               <p class="section-tag">Welcome</p>
@@ -231,6 +238,19 @@
                 <h2>Book a venue</h2>
               </div>
             </div>
+
+            <!-- Modification 3: Edit Mode Interactive Help Banner -->
+            <div id="editModeHelper" class="hidden" style="background-color: #fbf6ec; border: 1px solid #f3dcb1; border-radius: 16px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: bold; color: #b67f14; font-size: 0.95rem;">Editing Booking Code:</span>
+                <span id="editingCodeDisplay" style="font-family: monospace; font-weight: bold; background-color: #f6ebd5; padding: 3px 8px; border-radius: 6px;">—</span>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button type="button" id="editChangeDateBtn" class="secondary-btn small-btn" style="background-color: #ffd666; color: #594000; font-weight: 600;">Change Date (Clear Current)</button>
+                <button type="button" id="editChangeTimeBtn" class="secondary-btn small-btn" style="background-color: #ffd666; color: #594000; font-weight: 600;">Change Time (Clear Current)</button>
+              </div>
+            </div>
+
             <form id="bookingForm" class="grid-form booking-form">
               <label class="half-field">
                 Booked by
@@ -278,10 +298,20 @@
                 <button id="clearDatesBtn" type="button" class="ghost-btn">Clear dates</button>
                 <div id="selectedDates" class="selected-dates"></div>
               </div>
+
               <label class="half-field">
                 Hijri preview
                 <textarea id="hijriPreview" readonly></textarea>
               </label>
+
+              <!-- Modification 7: Venue Busy Schedule Viewer (Anonymous, User-Friendly) -->
+              <div class="half-field" style="background-color: #faf8f5; border: 1px solid #e6dfd5; border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-weight: 600; font-size: 0.88rem; color: var(--accent-dark);">Venue Busy Schedule (Already Booked):</span>
+                <div id="venueBusyTimes" style="max-height: 80px; overflow-y: auto; font-size: 0.82rem; line-height: 1.4; color: #7a5a0b; font-family: monospace;">
+                  Select a venue to check unavailable slots...
+                </div>
+              </div>
+
               <div class="half-field">
                 <div class="section-inline-head">
                   <span>Time slots</span>
@@ -314,14 +344,24 @@
                 <p class="section-tag" id="tableTag">Active Bookings</p>
                 <h2 id="tableTitle" style="margin: 4px 0 0;">Current bookings</h2>
               </div>
-              <!-- Modification 5: Custom Venue Group Dropdown Filter -->
-              <div class="filter-wrap" style="display: flex; align-items: center; gap: 8px;">
-                <label for="venueDetailFilter" style="font-weight: 600; font-size: 0.9rem; color: var(--muted); white-space: nowrap;">Filter Group:</label>
-                <select id="venueDetailFilter" style="width: 220px; border-radius: 12px; padding: 8px 12px; border: 1px solid var(--line); background-color: #fff;"></select>
+              
+              <!-- Modification 4: Live Data Slicer Panel (Venue, User & Date Filters) -->
+              <div class="filter-wrap" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <label for="venueDetailFilter" style="font-weight: 600; font-size: 0.9rem; color: var(--muted); white-space: nowrap;">Venue Group:</label>
+                  <select id="venueDetailFilter" style="width: 160px; border-radius: 12px; padding: 8px 12px; border: 1px solid var(--line); background-color: #fff;"></select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <label for="userDetailFilter" style="font-weight: 600; font-size: 0.9rem; color: var(--muted); white-space: nowrap;">User:</label>
+                  <select id="userDetailFilter" style="width: 160px; border-radius: 12px; padding: 8px 12px; border: 1px solid var(--line); background-color: #fff;"></select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <label for="dateDetailFilter" style="font-weight: 600; font-size: 0.9rem; color: var(--muted); white-space: nowrap;">Date:</label>
+                  <select id="dateDetailFilter" style="width: 160px; border-radius: 12px; padding: 8px 12px; border: 1px solid var(--line); background-color: #fff;"></select>
+                </div>
               </div>
             </div>
 
-            <!-- Modification 3: Bulk Approval Action Banner -->
             <div id="bulkAdminActions" class="hidden" style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; background-color: var(--panel-alt); border: 1px solid #bfe0d6; border-radius: 16px; padding: 12px 18px;">
               <span style="font-weight: bold; color: var(--accent-dark); font-size: 0.95rem;">Bulk Actions:</span>
               <button id="approveSelectedBtn" class="primary-btn" style="padding: 6px 16px; font-size: 0.85rem;">Approve Selected</button>
@@ -331,17 +371,19 @@
               <table>
                 <thead>
                   <tr>
-                    <!-- Modification 3: Header Checkbox column, hidden by default -->
                     <th id="thSelectAll" class="hidden" style="width: 40px; text-align: center; vertical-align: middle;">
                       <input type="checkbox" id="selectAllPending" style="width: auto; transform: scale(1.15); cursor: pointer;" />
                     </th>
-                    <th><button type="button" class="sort-header" data-sort-field="date">Date <span id="sort-date">↕</span></button></th>
-                    <th><button type="button" class="sort-header" data-sort-field="time">Time <span id="sort-time">↕</span></button></th>
+                    <!-- Modification 5: Split columns for clear date & time start-ends -->
+                    <th><button type="button" class="sort-header" data-sort-field="date">From Date <span id="sort-date">↕</span></button></th>
+                    <th>To Date</th>
+                    <th><button type="button" class="sort-header" data-sort-field="time">Start Time <span id="sort-time">↕</span></button></th>
+                    <th>End Time</th>
                     <th><button type="button" class="sort-header" data-sort-field="venue">Venue <span id="sort-venue">↕</span></button></th>
                     <th><button type="button" class="sort-header" data-sort-field="user">Booked By <span id="sort-user">↕</span></button></th>
                     <th>Purpose</th>
                     <th>Audience</th>
-                    <th>Requirements</th> <!-- Modification 1: Requirements Column -->
+                    <th>Requirements</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -364,13 +406,16 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Time</th>
+                    <!-- Modification 5: Split columns for previous booking history too -->
+                    <th>From Date</th>
+                    <th>To Date</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
                     <th>Venue</th>
                     <th>Booked By</th>
                     <th>Purpose</th>
                     <th>Audience</th>
-                    <th>Requirements</th> <!-- Modification 1: Requirements Column -->
+                    <th>Requirements</th>
                     <th>Status</th>
                   </tr>
                 </thead>

@@ -3,7 +3,7 @@ import io
 import json
 import os
 import secrets
-import sqlite3  # Kept in imports in case any helper references it, but psycopg2 is used.
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,7 +12,6 @@ from urllib.parse import parse_qs, urlparse
 import urllib.request
 import urllib.error
 
-# Import PostgreSQL drivers
 import psycopg2
 import psycopg2.extras
 
@@ -23,39 +22,16 @@ HOST = os.getenv("ISTEFADAH_HOST", "0.0.0.0" if os.getenv("PORT") else "127.0.0.
 PORT = int(os.getenv("PORT") or os.getenv("ISTEFADAH_PORT", "8000"))
 
 TIME_SLOTS = [
-    "08:00-08:30",
-    "08:30-09:00",
-    "09:00-09:30",
-    "09:30-10:00",
-    "10:00-10:30",
-    "10:30-11:00",
-    "11:00-11:30",
-    "11:30-12:00",
-    "12:00-12:30",
-    "12:30-13:00",
-    "13:00-13:30",
-    "13:30-14:00",
-    "14:00-14:30",
-    "14:30-15:00",
-    "15:00-15:30",
-    "15:30-16:00",
-    "16:00-16:30",
-    "16:30-17:00",
-    "17:00-17:30",
-    "17:30-18:00",
-    "18:00-18:30",
-    "18:30-19:00",
-    "19:00-19:30",
-    "19:30-20:00",
-    "20:00-20:30",
-    "20:30-21:00",
-    "21:00-21:30",
-    "21:30-22:00",
-    "22:00-22:30",
-    "22:30-23:00",
+    "08:00-08:30", "08:30-09:00", "09:00-09:30", "09:30-10:00",
+    "10:00-10:30", "10:30-11:00", "11:00-11:30", "11:30-12:00",
+    "12:00-12:30", "12:30-13:00", "13:00-13:30", "13:30-14:00",
+    "14:00-14:30", "14:30-15:00", "15:00-15:30", "15:30-16:00",
+    "16:00-16:30", "16:30-17:00", "17:00-17:30", "17:30-18:00",
+    "18:00-18:30", "18:30-19:00", "19:00-19:30", "19:30-20:00",
+    "20:00-20:30", "20:30-21:00", "21:00-21:30", "21:30-22:00",
+    "22:00-22:30", "22:30-23:00"
 ]
 
-# Upgraded to your specific seed venues and details groups
 FALLBACK_VENUES = [
     ("Rabvat jiblah", 250, "Jamea"),
     ("Faiz e Saiffee 1st floor", 300, "Qubba Mubaraka"),
@@ -102,7 +78,6 @@ USERS = [
 
 SESSIONS: dict[str, dict] = {}
 
-
 def load_seed_venues() -> list[tuple[str, int, str]]:
     if not VENUE_SEED_PATH.exists():
         return FALLBACK_VENUES
@@ -123,31 +98,24 @@ def load_seed_venues() -> list[tuple[str, int, str]]:
             venues.append((name, capacity, details))
     return venues or FALLBACK_VENUES
 
-
 VENUES = load_seed_venues()
-
 
 def now_utc() -> datetime:
     return datetime.now(UTC)
 
-
 def utc_iso(value: datetime | None = None) -> str:
     return (value or now_utc()).isoformat()
-
 
 def parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
-
-# Connection wrapper to make PostgreSQL connections act like SQLite
 class PostgresConnectionWrapper:
     def __init__(self, conn):
         self.conn = conn
 
     def execute(self, sql, params=None):
-        # Convert SQLite ? placeholders to PostgreSQL %s placeholders
         sql = sql.replace("?", "%s")
-        cur = self.conn.cursor()
+        cur = self.conn.conn.cursor() if hasattr(self.conn, "conn") else self.conn.cursor()
         cur.execute(sql, params)
         return cur
 
@@ -170,19 +138,14 @@ class PostgresConnectionWrapper:
             self.commit()
         self.close()
 
-
 def db_connection() -> PostgresConnectionWrapper:
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         raise ValueError("DATABASE_URL environment variable is missing! Please configure it in your Render settings.")
-    
-    # Render's database strings often start with postgres://, but Python's psycopg2 prefers postgresql://
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
-        
     raw_conn = psycopg2.connect(db_url, cursor_factory=psycopg2.extras.DictCursor)
     return PostgresConnectionWrapper(raw_conn)
-
 
 def init_db() -> None:
     with db_connection() as conn:
@@ -246,10 +209,7 @@ def init_db() -> None:
 
         for user in USERS:
             exists = conn.execute(
-                """
-                SELECT id FROM users 
-                WHERE email = %s OR email LIKE %s
-                """,
+                "SELECT id FROM users WHERE email = %s OR email LIKE %s",
                 (user[1], f"deleted-%-{user[1]}"),
             ).fetchone()
 
@@ -288,9 +248,7 @@ def init_db() -> None:
                 [venue[0] for venue in VENUES],
             )
 
-
 def update_completed_bookings(conn: PostgresConnectionWrapper) -> None:
-    """Automatically mark finished approved/pending bookings as completed."""
     now = datetime.now()
     try:
         rows = conn.execute(
@@ -303,15 +261,9 @@ def update_completed_bookings(conn: PostgresConnectionWrapper) -> None:
 
         for row in rows:
             try:
-                booking_date = datetime.strptime(
-                    row["booking_date"], "%Y-%m-%d"
-                ).date()
-
+                booking_date = datetime.strptime(row["booking_date"], "%Y-%m-%d").date()
                 end_time = row["time_slot"].split("-")[1].strip()
-                booking_end = datetime.strptime(
-                    f"{booking_date} {end_time}",
-                    "%Y-%m-%d %H:%M",
-                )
+                booking_end = datetime.strptime(f"{booking_date} {end_time}", "%Y-%m-%d %H:%M")
 
                 if booking_end <= now:
                     conn.execute(
@@ -328,38 +280,109 @@ def update_completed_bookings(conn: PostgresConnectionWrapper) -> None:
     except Exception:
         pass
 
+def merge_dates_py(dates_list: list[str]) -> str:
+    if not dates_list:
+        return ""
+    sorted_dates = sorted(list(set(dates_list)))
+    ranges = []
+    temp_range = []
+    
+    for d_str in sorted_dates:
+        d = datetime.strptime(d_str, "%Y-%m-%d").date()
+        if not temp_range:
+            temp_range.append(d)
+        else:
+            if d == temp_range[-1] + timedelta(days=1):
+                temp_range.append(d)
+            else:
+                if len(temp_range) == 1:
+                    ranges.append(temp_range[0].strftime("%Y-%m-%d"))
+                else:
+                    ranges.append(f"{temp_range[0].strftime('%Y-%m-%d')} to {temp_range[-1].strftime('%Y-%m-%d')}")
+                temp_range = [d]
+    if temp_range:
+        if len(temp_range) == 1:
+            ranges.append(temp_range[0].strftime("%Y-%m-%d"))
+        else:
+            ranges.append(f"{temp_range[0].strftime('%Y-%m-%d')} to {temp_range[-1].strftime('%Y-%m-%d')}")
+    return ", ".join(ranges)
 
-def sync_to_google_sheet(booking: dict) -> None:
-    """Send booking details to Google Sheets Webhook on creation, update, approval or cancellation."""
+def merge_slots_py(slots_list: list[str]) -> str:
+    if not slots_list:
+        return ""
+    sorted_slots = sorted(list(set(slots_list)), key=lambda x: x.split("-")[0])
+    merged = []
+    current_start = None
+    current_end = None
+    for slot in sorted_slots:
+        parts = slot.split("-")
+        if len(parts) != 2:
+            continue
+        start, end = parts[0], parts[1]
+        if current_start is None:
+            current_start = start
+            current_end = end
+        elif start == current_end:
+            current_end = end
+        else:
+            merged.append(f"{current_start}-{current_end}")
+            current_start = start
+            current_end = end
+    if current_start is not None:
+        merged.append(f"{current_start}-{current_end}")
+    return ", ".join(merged)
+
+def get_clubbed_booking_payload(conn: PostgresConnectionWrapper, booking_code: str) -> dict:
+    rows = conn.execute(
+        """
+        SELECT b.*, v.name AS venue_name, v.capacity AS venue_capacity, u.name AS owner_name, u.email AS owner_email
+        FROM bookings b
+        JOIN venues v ON v.id = b.venue_id
+        JOIN users u ON u.id = b.user_id
+        WHERE b.booking_code = %s
+        """,
+        (booking_code,)
+    ).fetchall()
+    if not rows:
+        return {}
+    
+    dates = [r["booking_date"] for r in rows]
+    slots = [r["time_slot"] for r in rows]
+    
+    merged_dates = merge_dates_py(dates)
+    merged_slots = merge_slots_py(slots)
+    ref = rows[0]
+    
+    return {
+        "bookingCode": ref["booking_code"],
+        "bookingDate": merged_dates,
+        "timeSlot": merged_slots,
+        "venueName": ref["venue_name"],
+        "bookedBy": ref["booked_by"],
+        "purpose": ref["purpose"],
+        "audienceCount": ref["audience_count"],
+        "status": ref["status"],
+        "createdAt": ref["created_at"]
+    }
+
+def sync_to_google_sheet_by_code(conn: PostgresConnectionWrapper, booking_code: str) -> None:
     webhook_url = os.getenv("GOOGLE_SHEET_WEBHOOK")
     if not webhook_url:
         return
+    payload = get_clubbed_booking_payload(conn, booking_code)
+    if not payload:
+        return
     try:
-        data = {
-            "bookingCode": booking["bookingCode"],
-            "bookingDate": booking["bookingDate"],
-            "timeSlot": booking["timeSlot"],
-            "venueName": booking["venueName"],
-            "bookedBy": booking["bookedBy"],
-            "purpose": booking["purpose"],
-            "audienceCount": booking["audienceCount"],
-            "status": booking["status"],
-            "createdAt": booking["createdAt"]
-        }
-        
         req = urllib.request.Request(
             webhook_url,
-            data=json.dumps(data).encode("utf-8"),
+            data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        
-        # Standard urlopen naturally switches the method to GET during 302 redirects
         with urllib.request.urlopen(req, timeout=8) as response:
             res_body = response.read().decode("utf-8")
             print(f"[DEBUG] Google Sheet sync response: {res_body}", flush=True)
     except Exception as e:
         print(f"[DEBUG] Google Sheet sync failed: {e}", flush=True)
-
 
 def user_can_manage_booking(actor: dict, booking: dict) -> bool:
     if actor["role"] == "admin":
@@ -373,17 +396,14 @@ def user_can_manage_booking(actor: dict, booking: dict) -> bool:
         return True
     return bool(actor["can_edit_after_48h"])
 
-
 def add_notification(conn: PostgresConnectionWrapper, user_id: int, message: str) -> None:
     conn.execute(
         "INSERT INTO notifications (user_id, message, created_at) VALUES (%s, %s, %s)",
         (user_id, message, utc_iso()),
     )
 
-
 def get_admin_ids(conn: PostgresConnectionWrapper) -> list[int]:
     return [row["id"] for row in conn.execute("SELECT id FROM users WHERE role = 'admin'")]
-
 
 def serialize_user(row: dict, booking_count: int = 0, active_booking_count: int = 0) -> dict:
     return {
@@ -401,10 +421,8 @@ def serialize_user(row: dict, booking_count: int = 0, active_booking_count: int 
         "canToggleActive": row["role"] != "admin" and not bool(row["is_deleted"]),
     }
 
-
 def user_must_reset_password(user: dict) -> bool:
     return bool(user["password_reset_required"])
-
 
 def fetch_booking(conn: PostgresConnectionWrapper, booking_id: int) -> dict | None:
     update_completed_bookings(conn)
@@ -418,7 +436,6 @@ def fetch_booking(conn: PostgresConnectionWrapper, booking_id: int) -> dict | No
         """,
         (booking_id,),
     ).fetchone()
-
 
 def serialize_booking(row: dict) -> dict:
     return {
@@ -443,7 +460,6 @@ def serialize_booking(row: dict) -> dict:
         "updatedAt": row["updated_at"],
     }
 
-
 def serialize_notification(row: dict) -> dict:
     return {
         "id": row["id"],
@@ -452,7 +468,6 @@ def serialize_notification(row: dict) -> dict:
         "isRead": bool(row["is_read"]),
     }
 
-
 def parse_body(handler: BaseHTTPRequestHandler) -> dict:
     length = int(handler.headers.get("Content-Length", "0"))
     raw = handler.rfile.read(length) if length else b"{}"
@@ -460,12 +475,9 @@ def parse_body(handler: BaseHTTPRequestHandler) -> dict:
         return {}
     return json.loads(raw.decode("utf-8"))
 
-
 def generate_booking_code() -> str:
     return f"IVB-{secrets.token_hex(3).upper()}"
 
-
-# Enhanced to allow ignoring matching booking codes for updates
 def find_conflicts(
     conn: PostgresConnectionWrapper,
     venue_id: int,
@@ -511,7 +523,6 @@ def find_conflicts(
             )
     return conflicts
 
-
 def collect_slot_conflicts(
     conn: PostgresConnectionWrapper,
     venue_id: int,
@@ -525,7 +536,7 @@ def collect_slot_conflicts(
         conflicts.extend(find_conflicts(conn, venue_id, time_slot, dates, ignore_booking_id, ignore_booking_code))
     return conflicts
 
-
+# Modification 10: Fetch all globally (non-admin limits removed here; privacy scrubbing happens at handler-level)
 def fetch_bookings(conn: PostgresConnectionWrapper, user: dict | None = None) -> list[dict]:
     update_completed_bookings(conn)
     query = """
@@ -535,24 +546,73 @@ def fetch_bookings(conn: PostgresConnectionWrapper, user: dict | None = None) ->
         JOIN users u ON u.id = b.user_id
     """
     params: list = []
-    if user and user["role"] != "admin":
-        query += " WHERE b.user_id = %s"
-        params.append(user["id"])
     query += " ORDER BY b.booking_date DESC, b.time_slot DESC, b.id DESC"
     return [serialize_booking(row) for row in conn.execute(query, params)]
 
+def club_bookings_py(bookings_list: list[dict]) -> list[dict]:
+    groups = {}
+    for b in bookings_list:
+        code = b["bookingCode"]
+        if code not in groups:
+            groups[code] = []
+        groups[code].append(b)
+    
+    result = []
+    for code, items in groups.items():
+        dates = sorted(list(set(b["bookingDate"] for b in items)))
+        blocks = []
+        current_block = []
+        for d_str in dates:
+            d = datetime.strptime(d_str, "%Y-%m-%d").date()
+            if not current_block:
+                current_block.append(d)
+            else:
+                if d == current_block[-1] + timedelta(days=1):
+                    current_block.append(d)
+                else:
+                    blocks.append(current_block)
+                    current_block = [d]
+        if current_block:
+            blocks.append(current_block)
+        
+        for block in blocks:
+            block_strs = [d.strftime("%Y-%m-%d") for d in block]
+            block_items = [item for item in items if item["bookingDate"] in block_strs]
+            
+            slots = sorted(list(set(item["timeSlot"] for item in block_items)), key=lambda x: x.split("-")[0])
+            start_times = [s.split("-")[0] for s in slots if "-" in s]
+            end_times = [s.split("-")[1] for s in slots if "-" in s]
+            
+            start_time = start_times[0] if start_times else "—"
+            end_time = end_times[-1] if end_times else "—"
+            ref = block_items[0]
+            
+            result.append({
+                "bookingCode": ref["bookingCode"],
+                "fromDate": block_strs[0],
+                "toDate": block_strs[-1],
+                "startTime": start_time,
+                "endTime": end_time,
+                "venueName": ref["venueName"],
+                "bookedBy": ref["bookedBy"],
+                "purpose": ref["purpose"],
+                "audienceCount": ref["audienceCount"],
+                "avitRequirements": ref["avitRequirements"],
+                "sittingArrangements": ref["sittingArrangements"],
+                "status": ref["status"],
+            })
+    return result
 
-# Modification 1: Adding Requirements to Exported Reports
 def render_office_table(bookings: list[dict], title: str) -> str:
-    active_bookings = [b for b in bookings if b["status"] in ("pending", "approved")]
-    history_bookings = [b for b in bookings if b["status"] in ("completed", "cancelled")]
+    clubbed = club_bookings_py(bookings)
+    active_bookings = [b for b in clubbed if b["status"] in ("pending", "approved")]
+    history_bookings = [b for b in clubbed if b["status"] in ("completed", "cancelled")]
 
     def make_rows(items: list[dict]) -> str:
         if not items:
-            return "<tr><td colspan='9'>No bookings found.</td></tr>"
+            return "<tr><td colspan='11'>No bookings found.</td></tr>"
         rows = []
         for booking in items:
-            # Format requirements elegantly
             avit = booking.get("avitRequirements", [])
             sitting = booking.get("sittingArrangements", [])
             req_parts = []
@@ -566,8 +626,10 @@ def render_office_table(bookings: list[dict], title: str) -> str:
                 f"""
                 <tr>
                   <td>{booking['bookingCode']}</td>
-                  <td>{booking['bookingDate']}</td>
-                  <td>{booking['timeSlot']}</td>
+                  <td>{booking['fromDate']}</td>
+                  <td>{booking['toDate']}</td>
+                  <td>{booking['startTime']}</td>
+                  <td>{booking['endTime']}</td>
                   <td>{booking['venueName']}</td>
                   <td>{booking['bookedBy']}</td>
                   <td>{booking['purpose']}</td>
@@ -582,8 +644,10 @@ def render_office_table(bookings: list[dict], title: str) -> str:
     header = """
     <tr>
       <th>Booking Code</th>
-      <th>Date</th>
-      <th>Time Slot</th>
+      <th>From Date</th>
+      <th>To Date</th>
+      <th>Start Time</th>
+      <th>End Time</th>
       <th>Venue</th>
       <th>Booked By</th>
       <th>Purpose</th>
@@ -617,7 +681,6 @@ def render_office_table(bookings: list[dict], title: str) -> str:
     </html>
     """
 
-
 class AppHandler(BaseHTTPRequestHandler):
     server_version = "IstefadahBooking/1.0"
 
@@ -633,6 +696,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 content_type = "text/css; charset=utf-8"
             elif filename.endswith(".js"):
                 content_type = "application/javascript; charset=utf-8"
+            elif filename.endswith(".png"):
+                content_type = "image/png"
+            elif filename.endswith(".jpg") or filename.endswith(".jpeg"):
+                content_type = "image/jpeg"
             self.serve_static(filename, content_type)
             return
         if parsed.path == "/api/bootstrap":
@@ -866,12 +933,42 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         self.json_response({"user": serialize_user(user)})
 
+    # Modification 10: Scrub private booking details for non-admin users to ensure complete GDPR privacy while preventing conflicts globally
     def handle_get_bookings(self) -> None:
         user = self.require_ready_user()
         if not user:
             return
         with db_connection() as conn:
-            self.json_response({"bookings": fetch_bookings(conn, user)})
+            raw_bookings = fetch_bookings(conn, user=None) # Fetch all active system bookings globally
+            
+            scrubbed_bookings = []
+            for b in raw_bookings:
+                if user["role"] == "admin" or b["userId"] == user["id"]:
+                    scrubbed_bookings.append(b)
+                else:
+                    # Scrub user-private booking parameters
+                    scrubbed_bookings.append({
+                        "id": b["id"],
+                        "bookingCode": b["bookingCode"],
+                        "userId": b["userId"],
+                        "bookedBy": "Unavailable Slot",
+                        "ownerName": "Anonymous",
+                        "ownerEmail": "anonymous@istefadah.org",
+                        "venueId": b["venueId"],
+                        "venueName": b["venueName"],
+                        "venueCapacity": b["venueCapacity"],
+                        "bookingDate": b["bookingDate"],
+                        "timeSlot": b["timeSlot"],
+                        "purpose": "Unavailable Slot",
+                        "audienceCount": b["audienceCount"],
+                        "audienceDetails": "",
+                        "avitRequirements": [],
+                        "sittingArrangements": [],
+                        "status": b["status"],
+                        "createdAt": b["createdAt"],
+                        "updatedAt": b["updatedAt"],
+                    })
+            self.json_response({"bookings": scrubbed_bookings})
 
     def handle_get_notifications(self) -> None:
         user = self.require_ready_user()
@@ -884,7 +981,6 @@ class AppHandler(BaseHTTPRequestHandler):
             ).fetchall()
         self.json_response({"notifications": [serialize_notification(row) for row in rows]})
 
-    # Modification 2: Creating a single booking code per continuous layout submission block
     def handle_create_bookings(self) -> None:
         user = self.require_ready_user()
         if not user:
@@ -981,7 +1077,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
 
             created_ids: list[int] = []
-            booking_code = generate_booking_code()  # Generated once per block submission
+            booking_code = generate_booking_code()
             for booking_date, time_slot in final_pairs:
                 cursor = conn.execute(
                     """
@@ -1015,8 +1111,6 @@ class AppHandler(BaseHTTPRequestHandler):
             for booking_id in created_ids:
                 booking = fetch_booking(conn, booking_id)
                 if booking:
-                    # Sync created bookings to Google Sheets
-                    sync_to_google_sheet(serialize_booking(booking))
                     add_notification(
                         conn,
                         user["id"],
@@ -1028,6 +1122,8 @@ class AppHandler(BaseHTTPRequestHandler):
                             admin_id,
                             f"Approval pending: {booking['booked_by']} requested {booking['booking_date']} {booking['time_slot']} at {booking['venue_name']}.",
                         )
+            
+            sync_to_google_sheet_by_code(conn, booking_code)
             created = [serialize_booking(fetch_booking(conn, booking_id)) for booking_id in created_ids]
         self.json_response(
             {
@@ -1038,7 +1134,6 @@ class AppHandler(BaseHTTPRequestHandler):
             HTTPStatus.CREATED,
         )
 
-    # Modification 2: Upgraded editing support to edit contiguous slot blocks cleanly
     def handle_update_booking(self, path: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1099,13 +1194,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            # Check conflicts, ignoring current records sharing the target booking_code
             conflicts = collect_slot_conflicts(conn, new_venue_id, time_slots, dates, ignore_booking_code=booking_code)
             if conflicts:
                 self.json_response({"error": conflicts[0]["message"]}, HTTPStatus.CONFLICT)
                 return
 
-            # Atomically delete legacy blocks and re-insert the updated block layout
             conn.execute("DELETE FROM bookings WHERE booking_code = %s", (booking_code,))
 
             created_ids = []
@@ -1142,8 +1235,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
             refreshed = fetch_booking(conn, created_ids[0])
             if refreshed:
-                # Sync updated details to Google Sheets
-                sync_to_google_sheet(serialize_booking(refreshed))
+                sync_to_google_sheet_by_code(conn, booking_code)
                 add_notification(
                     conn,
                     booking["user_id"],
@@ -1158,7 +1250,6 @@ class AppHandler(BaseHTTPRequestHandler):
                         )
         self.json_response({"message": "Booking updated successfully.", "booking": serialize_booking(refreshed)})
 
-    # Modification 2: Upgraded cancel logic to cancel all elements in contiguous block
     def handle_delete_booking(self, path: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1182,8 +1273,7 @@ class AppHandler(BaseHTTPRequestHandler):
             )
             updated_booking = fetch_booking(conn, booking_id)
             if updated_booking:
-                # Sync status update to Google Sheets
-                sync_to_google_sheet(serialize_booking(updated_booking))
+                sync_to_google_sheet_by_code(conn, booking_code)
                 add_notification(
                     conn,
                     booking["user_id"],
@@ -1198,7 +1288,6 @@ class AppHandler(BaseHTTPRequestHandler):
                         )
         self.json_response({"message": "Booking cancelled successfully."})
 
-    # Modification 2: Upgraded approval logic to approve all blocks sharing this booking code
     def handle_approve_booking(self, path: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1237,8 +1326,7 @@ class AppHandler(BaseHTTPRequestHandler):
             )
             refreshed = fetch_booking(conn, booking_id)
             if refreshed:
-                # Sync status update to Google Sheets
-                sync_to_google_sheet(serialize_booking(refreshed))
+                sync_to_google_sheet_by_code(conn, booking_code)
                 add_notification(
                     conn,
                     booking["user_id"],
@@ -1264,16 +1352,13 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             
             booking_code = booking["booking_code"]
-            
-            # Revert all bookings in this block to pending status
             conn.execute(
                 "UPDATE bookings SET status = 'pending', updated_at = %s, updated_by_user_id = %s WHERE booking_code = %s",
                 (utc_iso(), user["id"], booking_code),
             )
             refreshed = fetch_booking(conn, booking_id)
             if refreshed:
-                # Sync status update back to Google Sheets
-                sync_to_google_sheet(serialize_booking(refreshed))
+                sync_to_google_sheet_by_code(conn, booking_code)
                 add_notification(
                     conn,
                     booking["user_id"],
@@ -1546,11 +1631,17 @@ class AppHandler(BaseHTTPRequestHandler):
         if user["role"] != "admin":
             self.json_response({"error": "Admin access required."}, HTTPStatus.FORBIDDEN)
             return
+
+        payload = parse_body(self)
+        password_attempt = payload.get("password", "")
+        if not password_attempt or password_attempt != user["password"]:
+            self.json_response({"error": "Verification failed. Incorrect admin password."}, HTTPStatus.UNAUTHORIZED)
+            return
+
         with db_connection() as conn:
             conn.execute("DELETE FROM bookings")
         self.json_response({"message": "All database bookings cleared successfully."})
 
-    # Modification 1: Formatting Requirements inside Exporters
     def handle_export(self, query: str) -> None:
         user = self.require_ready_user()
         if not user:
@@ -1558,20 +1649,25 @@ class AppHandler(BaseHTTPRequestHandler):
         params = parse_qs(query)
         export_format = params.get("format", ["excel"])[0]
         with db_connection() as conn:
-            bookings = fetch_bookings(conn, user)
+            bookings = fetch_bookings(conn, user=None)
+            
+            # Safeguard context exports for standard users
+            if user["role"] != "admin":
+                bookings = [b for b in bookings if b["userId"] == user["id"]]
+
+        clubbed = club_bookings_py(bookings)
+        active_bookings = [b for b in clubbed if b["status"] in ("pending", "approved")]
+        history_bookings = [b for b in clubbed if b["status"] in ("completed", "cancelled")]
 
         if export_format == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
             
-            active_bookings = [b for b in bookings if b["status"] in ("pending", "approved")]
-            history_bookings = [b for b in bookings if b["status"] in ("completed", "cancelled")]
-
             writer.writerow(["--- ACTIVE BOOKINGS (PENDING & APPROVED) ---"])
-            writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Requirements", "Status"])
-            for booking in active_bookings:
-                avit = booking.get("avitRequirements", [])
-                sitting = booking.get("sittingArrangements", [])
+            writer.writerow(["Booking Code", "From Date", "To Date", "Start Time", "End Time", "Venue", "Booked By", "Purpose", "Audience", "Requirements", "Status"])
+            for b in active_bookings:
+                avit = b.get("avitRequirements", [])
+                sitting = b.get("sittingArrangements", [])
                 req_parts = []
                 if avit:
                     req_parts.append(f"AVIT: {', '.join(avit)}")
@@ -1580,24 +1676,26 @@ class AppHandler(BaseHTTPRequestHandler):
                 req_str = " | ".join(req_parts) if req_parts else "—"
                 writer.writerow(
                     [
-                        booking["bookingCode"],
-                        booking["bookingDate"],
-                        booking["timeSlot"],
-                        booking["venueName"],
-                        booking["bookedBy"],
-                        booking["purpose"],
-                        booking["audienceCount"],
+                        b["bookingCode"],
+                        b["fromDate"],
+                        b["toDate"],
+                        b["startTime"],
+                        b["endTime"],
+                        b["venueName"],
+                        b["bookedBy"],
+                        b["purpose"],
+                        b["audienceCount"],
                         req_str,
-                        booking["status"],
+                        b["status"],
                     ]
                 )
             
             writer.writerow([])
             writer.writerow(["--- PREVIOUS BOOKING HISTORY (COMPLETED & CANCELLED) ---"])
-            writer.writerow(["Booking Code", "Date", "Time Slot", "Venue", "Booked By", "Purpose", "Audience", "Requirements", "Status"])
-            for booking in history_bookings:
-                avit = booking.get("avitRequirements", [])
-                sitting = booking.get("sittingArrangements", [])
+            writer.writerow(["Booking Code", "From Date", "To Date", "Start Time", "End Time", "Venue", "Booked By", "Purpose", "Audience", "Requirements", "Status"])
+            for b in history_bookings:
+                avit = b.get("avitRequirements", [])
+                sitting = b.get("sittingArrangements", [])
                 req_parts = []
                 if avit:
                     req_parts.append(f"AVIT: {', '.join(avit)}")
@@ -1606,15 +1704,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 req_str = " | ".join(req_parts) if req_parts else "—"
                 writer.writerow(
                     [
-                        booking["bookingCode"],
-                        booking["bookingDate"],
-                        booking["timeSlot"],
-                        booking["venueName"],
-                        booking["bookedBy"],
-                        booking["purpose"],
-                        booking["audienceCount"],
+                        b["bookingCode"],
+                        b["fromDate"],
+                        b["toDate"],
+                        b["startTime"],
+                        b["endTime"],
+                        b["venueName"],
+                        b["bookedBy"],
+                        b["purpose"],
+                        b["audienceCount"],
                         req_str,
-                        booking["status"],
+                        b["status"],
                     ]
                 )
 
@@ -1640,7 +1740,6 @@ class AppHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
-
 def main() -> None:
     init_db()
     try:
@@ -1662,6 +1761,6 @@ def main() -> None:
     finally:
         server.server_close()
 
-
 if __name__ == "__main__":
     main()
+    
