@@ -260,6 +260,7 @@ function mergeTimeSlots(slots) {
   return merged.join(", ");
 }
 
+// Timezone-independent UTC date continuity calculation
 function getContinuousBlocks(dates) {
   const sorted = [...new Set(dates)].sort();
   const blocks = [];
@@ -268,9 +269,15 @@ function getContinuousBlocks(dates) {
     if (currentBlock.length === 0) {
       currentBlock.push(dStr);
     } else {
-      const prevDate = new Date(`${currentBlock[currentBlock.length - 1]}T00:00:00`);
-      prevDate.setDate(prevDate.getDate() + 1);
-      const expectedStr = prevDate.toISOString().slice(0, 10);
+      const [prevY, prevM, prevD] = currentBlock[currentBlock.length - 1].split("-").map(Number);
+      const prevDate = new Date(Date.UTC(prevY, prevM - 1, prevD));
+      prevDate.setUTCDate(prevDate.getUTCDate() + 1);
+      
+      const y = prevDate.getUTCFullYear();
+      const m = String(prevDate.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(prevDate.getUTCDate()).padStart(2, "0");
+      const expectedStr = `${y}-${m}-${d}`;
+      
       if (dStr === expectedStr) {
         currentBlock.push(dStr);
       } else {
@@ -396,7 +403,6 @@ function populateTableFilters() {
 
   const userFilterEl = document.getElementById("userDetailFilter");
   if (userFilterEl) {
-    // Only fetch non-scrubbed usernames for standard users
     const users = [...new Set(state.bookings.map(b => b.bookedBy).filter(b => b !== "Unavailable Slot"))].sort();
     const currentSelection = userFilterEl.value || "all";
     userFilterEl.innerHTML = `<option value="all">All Users</option>` +
@@ -579,7 +585,6 @@ function renderBookings() {
 
   const isAdmin = state.currentUser && state.currentUser.role === "admin";
 
-  // Safeguard: standard users should only view their personal bookings in active/history display tables
   if (!isAdmin) {
     rawActive = rawActive.filter(b => b.userId === state.currentUser.id);
     rawHistory = rawHistory.filter(b => b.userId === state.currentUser.id);
@@ -895,7 +900,6 @@ function addSelectedDate() {
   setMessage(bookingMessage, "");
 }
 
-// Modification 9: Timezone-independent UTC date range calculations
 function addDateRange() {
   const start = rangeStartDateEl.value;
   const end = rangeEndDateEl.value;
@@ -1003,7 +1007,7 @@ bookingForm.addEventListener("submit", async (event) => {
     bookingDate: parseDates()[0],
     audienceCount: Number(document.getElementById("audienceCount").value),
     avitRequirements: getCheckedValues("avitOptions"),
-    sittingArrangements: getCheckedValues("sittingOptions"),
+    sittingArrangements: getCheckedValues("sittingArrangements"),
   };
 
   if (!payload.dates.length) {
