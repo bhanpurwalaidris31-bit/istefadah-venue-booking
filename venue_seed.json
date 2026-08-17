@@ -173,5 +173,10 @@
     "name": "Najmi Masjid",
     "capacity": 1000,
     "details": "Begampura"
+  },
+    {
+    "name": "Audi Foyer",
+    "capacity": 250,
+    "details": "Jamea"
   }
 ]

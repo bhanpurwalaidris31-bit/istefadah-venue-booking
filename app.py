@@ -41,6 +41,7 @@ FALLBACK_VENUES = [
     ("Faiz e Saiffee 3rd floor", 300, "Qubba Mubaraka"),
     ("Fatemi Masjid Niswan", 400, "Jamea"),
     ("Auditorium", 500, "Jamea"),
+    ("Audi Foyer", 250, "Jamea"),
     ("Evan ul Barakaat", 1000, "Jamea"),
     ("Fatemi Masjid", 500, "Jamea"),
     ("Qism u Nawaderaat", 200, "Jamea"),
@@ -1763,4 +1764,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
