@@ -178,5 +178,11 @@
     "name": "Audi Foyer",
     "capacity": 250,
     "details": "Jamea"
+  },
+    {
+    "name": "Library",
+    "capacity": 250,
+    "details": "Jamea"
   }
 ]
+
