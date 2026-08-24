@@ -68,6 +68,7 @@ FALLBACK_VENUES = [
     ("Hadiaqat e Mufaddal third flr hall", 1000, "Begumwadi"),
     ("Husaina Hall, Husaini Manzil", 250, "Bilal Gali"),
     ("Masjid e Moazzam", 1500, "Masjid e Moazzam"),
+    ("Masjid e Moazzam Sehen", 1500, "Masjid e Moazzam"),
     ("Class Room 413", 50, "Jamea"),
     ("Najmi Masjid", 1000, "Begampura"),
 ]
