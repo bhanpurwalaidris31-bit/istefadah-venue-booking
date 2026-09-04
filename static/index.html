@@ -338,6 +338,29 @@
             <p id="bookingMessage" class="message"></p>
           </section>
 
+          <!-- Modification 11: Calendar View Section -->
+          <section class="card print-report" id="calendarSection">
+            <div class="section-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
+              <div>
+                <p class="section-tag">Schedule Grid</p>
+                <h2 id="calendarTitle">Monthly Calendar View</h2>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="calPrevBtn" class="secondary-btn small-btn">&larr; Prev Month</button>
+                <span id="calMonthLabel" style="font-weight: bold; font-size: 1.05rem; min-width: 140px; text-align: center;"></span>
+                <button id="calNextBtn" class="secondary-btn small-btn">Next Month &rarr;</button>
+              </div>
+            </div>
+            
+            <div class="calendar-grid-wrapper">
+              <div class="calendar-weekdays">
+                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+              </div>
+              <div id="calendarDaysGrid" class="calendar-days-grid"></div>
+            </div>
+          </section>
+          
+
           <section class="card print-report" id="activeBookingsSection">
             <div class="section-head" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
               <div>

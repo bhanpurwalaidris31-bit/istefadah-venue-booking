@@ -11,6 +11,7 @@ const state = {
   activeSort: "date",
   activeSortDirection: "asc",
   dateMode: "single",
+  currentCalendarDate: new Date(), // Added for calendar view
 };
 
 const AVIT_OPTIONS = ["Projector", "Sound system", "Microphone", "Recording", "Live streaming"];
@@ -702,6 +703,7 @@ function renderBookings() {
   historyMessage.textContent = "Cancelled records are shown here.";
   updateSortIndicators();
   updateVenueBusyTimes();
+  renderCalendar();
 }
 
 function renderNotifications() {
@@ -958,6 +960,78 @@ function initPasswordToggles() {
     });
   });
 }
+
+// --- Calendar View Implementation ---
+const calendarDaysGrid = document.getElementById("calendarDaysGrid");
+const calMonthLabel = document.getElementById("calMonthLabel");
+const calPrevBtn = document.getElementById("calPrevBtn");
+const calNextBtn = document.getElementById("calNextBtn");
+
+function renderCalendar() {
+  if (!calendarDaysGrid) return;
+  const year = state.currentCalendarDate.getFullYear();
+  const month = state.currentCalendarDate.getMonth();
+  
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  calMonthLabel.textContent = `${monthNames[month]} ${year}`;
+
+  const firstDayIndex = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  
+  let html = "";
+  
+  // Empty slots for previous month padding
+  for (let i = 0; i < firstDayIndex; i++) {
+    html += `<div class="calendar-cell inactive"></div>`;
+  }
+
+  // Active days of the month
+  for (let day = 1; day <= totalDays; day++) {
+    const monthStr = String(month + 1).padStart(2, "0");
+    const dayStr = String(day).padStart(2, "0");
+    const dateKey = `${year}-${monthStr}-${dayStr}`;
+
+    // Get clubbed/active bookings for this specific date
+    const allActive = getActiveBookings();
+    const dayBookings = allActive.filter(b => {
+      if (b.rawDates) return b.rawDates.includes(dateKey);
+      return b.bookingDate === dateKey;
+    });
+
+    const clubbedDayBookings = clubBookings(dayBookings);
+
+    let bookingsHtml = "";
+    clubbedDayBookings.forEach(b => {
+      bookingsHtml += `
+        <div class="cal-booking-pill status-${b.status}" title="${escapeHtml(b.purpose)}">
+          <strong>${escapeHtml(b.purpose)}</strong>
+          <span class="cal-booking-meta">(${escapeHtml(b.venueName)}, ${escapeHtml(b.startTime)} to ${escapeHtml(b.endTime)})</span>
+        </div>
+      `;
+    });
+
+    html += `
+      <div class="calendar-cell">
+        <div class="cal-date-number">${day}</div>
+        <div class="cal-bookings-list">
+          ${bookingsHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  calendarDaysGrid.innerHTML = html;
+}
+
+calPrevBtn?.addEventListener("click", () => {
+  state.currentCalendarDate.setMonth(state.currentCalendarDate.getMonth() - 1);
+  renderCalendar();
+});
+
+calNextBtn?.addEventListener("click", () => {
+  state.currentCalendarDate.setMonth(state.currentCalendarDate.getMonth() + 1);
+  renderCalendar();
+});
 
 async function bootstrap() {
   if ("Notification" in window && Notification.permission === "default") {
