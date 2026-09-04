@@ -71,6 +71,7 @@ FALLBACK_VENUES = [
     ("Masjid e Moazzam Sehen", 1500, "Masjid e Moazzam"),
     ("Class Room 413", 50, "Jamea"),
     ("Najmi Masjid", 1000, "Begampura"),
+    ("Badri Hall, Badri Masjid", 250, "Begampura"),
 ]
 
 USERS = [
