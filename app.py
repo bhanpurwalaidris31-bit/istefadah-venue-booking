@@ -40,7 +40,7 @@ FALLBACK_VENUES = [
     ("Madrasah Taiyebyah 1st basement", 500, "Begampura"),
     ("Faiz e Saiffee 3rd floor", 300, "Qubba Mubaraka"),
     ("Fatemi Masjid Niswan", 400, "Jamea"),
-    ("Auditorium", 500, "Jamea"),
+    ("Auditorium", 300, "Jamea"),
     ("Audi Foyer", 250, "Jamea"),
     ("Library", 250, "Jamea"),
     ("Evan ul Barakaat", 1000, "Jamea"),
