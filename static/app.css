@@ -792,21 +792,79 @@ th {
   margin-top: 1px;
 }
 
-/* Print Media Query extension for Calendar View */
+/* --- Optimized Print Styles for Calendar & Fit-to-Page --- */
 @media print {
+  @page {
+    size: auto; /* Adapts dynamically to A4 or A3 printer page selection */
+    margin: 10mm;
+  }
+
+  body {
+    background: white !important;
+    color: #000 !important;
+  }
+
+  /* Hide navigation controls and buttons on print */
+  #calPrevBtn,
+  #calNextBtn {
+    display: none !important;
+  }
+
   #calendarSection {
     display: block !important;
-    page-break-after: always !important;
+    width: 100% !important;
+    background: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page-break-inside: avoid !important;
   }
+
+  .calendar-days-grid {
+    display: grid !important;
+    grid-template-columns: repeat(7, 1fr) !important;
+    gap: 4px !important;
+  }
+
   .calendar-cell {
-    min-height: 90px !important;
+    min-height: 85px !important;
+    max-height: none !important;
+    height: auto !important;
     border: 1px solid #000 !important;
     background: none !important;
+    padding: 4px !important;
+    page-break-inside: avoid !important;
   }
+
+  .cal-bookings-list {
+    overflow: visible !important;
+    max-height: none !important;
+    display: block !important;
+  }
+
   .cal-booking-pill {
-    border: 1px solid #000 !important;
-    background: none !important;
+    border: 1px solid #444 !important;
+    border-left: 3px solid #000 !important;
+    background: #fdfdfd !important;
     color: #000 !important;
+    margin-bottom: 3px !important;
+    font-size: 7pt !important; /* Scaled down slightly to fit all bookings cleanly */
+    line-height: 1.1 !important;
+    padding: 2px 4px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cal-booking-meta {
+    color: #222 !important;
+    font-size: 6.2pt !important;
+  }
+
+  .cal-date-number {
+    background: none !important;
+    font-size: 8pt !important;
+    font-weight: bold !important;
   }
 }
 

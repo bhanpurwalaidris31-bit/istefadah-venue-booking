@@ -772,13 +772,19 @@ function toggleRestrictedMode() {
   historySection.classList.toggle("hidden", mustReset);
   logSection.classList.toggle("hidden", mustReset);
   exportSection.classList.toggle("hidden", mustReset);
+  
+  const calendarSection = document.getElementById("calendarSection");
+  
   if (state.currentUser?.role === "admin") {
     adminSection.classList.toggle("hidden", mustReset);
     clearLogsBtn?.classList.remove("hidden");
     adminClearBookingsBtn?.classList.remove("hidden");
+    if (calendarSection) calendarSection.classList.toggle("hidden", mustReset); // Admin can see calendar
   } else {
+    adminSection.classList.add("hidden");
     clearLogsBtn?.classList.add("hidden");
     adminClearBookingsBtn?.classList.add("hidden");
+    if (calendarSection) calendarSection.classList.add("hidden"); // Regular users cannot see calendar
   }
 }
 
