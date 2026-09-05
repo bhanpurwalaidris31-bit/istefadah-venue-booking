@@ -983,6 +983,7 @@ function renderCalendar() {
 
   const firstDayIndex = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
+  const isAdmin = state.currentUser && state.currentUser.role === "admin";
   
   let html = "";
   
@@ -1016,8 +1017,11 @@ function renderCalendar() {
       `;
     });
 
+    const clickableClass = isAdmin ? "clickable-date" : "";
+    const zoomTitleAttr = isAdmin ? `title="Click to view all bookings for ${dateKey}"` : "";
+
     html += `
-      <div class="calendar-cell">
+      <div class="calendar-cell ${clickableClass}" data-date="${dateKey}" ${zoomTitleAttr}>
         <div class="cal-date-number">${day}</div>
         <div class="cal-bookings-list">
           ${bookingsHtml}
@@ -1038,6 +1042,100 @@ calNextBtn?.addEventListener("click", () => {
   state.currentCalendarDate.setMonth(state.currentCalendarDate.getMonth() + 1);
   renderCalendar();
 });
+
+/* =================================================================
+   PASTED RIGHT HERE: Day Zoom Modal Controls (Admin Exclusive)
+   ================================================================= */
+
+const dayZoomModal = document.getElementById("dayZoomModal");
+const dayZoomTitle = document.getElementById("dayZoomTitle");
+const dayZoomHijri = document.getElementById("dayZoomHijri");
+const dayZoomContent = document.getElementById("dayZoomContent");
+const closeDayZoomBtn = document.getElementById("closeDayZoomBtn");
+
+function closeDayZoom() {
+  if (!dayZoomModal) return;
+  dayZoomModal.classList.add("hidden");
+}
+
+function openDayZoom(dateKey) {
+  // Enforce admin-only restriction
+  if (!state.currentUser || state.currentUser.role !== "admin") return;
+
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  const options = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
+  
+  dayZoomTitle.textContent = dateObj.toLocaleDateString("en-US", options);
+  dayZoomHijri.textContent = `${formatHijri(dateKey)} (${dateKey})`;
+
+  // Fetch all active bookings for this date and club continuous blocks
+  const allActive = getActiveBookings();
+  const dayBookings = allActive.filter(b => {
+    if (b.rawDates) return b.rawDates.includes(dateKey);
+    return b.bookingDate === dateKey;
+  });
+
+  const clubbed = clubBookings(dayBookings);
+  // Sort chronologically by start time
+  clubbed.sort((a, b) => compareValues(a.startTime, b.startTime));
+
+  if (!clubbed.length) {
+    dayZoomContent.innerHTML = `
+      <div class="modal-empty-state">
+        <p>No bookings scheduled for this date.</p>
+        <span style="font-size: 0.85rem; color: #888;">All slots are available.</span>
+      </div>
+    `;
+  } else {
+    dayZoomContent.innerHTML = clubbed.map(b => `
+      <div class="day-zoom-item status-${escapeHtml(b.status)}">
+        <div class="day-zoom-headline">
+          <strong>"${escapeHtml(b.purpose)}"</strong> 
+          <span style="color: var(--accent-dark); font-weight: 500;">
+            (${escapeHtml(b.venueName)}, ${escapeHtml(b.startTime)} to ${escapeHtml(b.endTime)})
+          </span>
+        </div>
+        <div class="day-zoom-sub">
+          <span><strong>Booked by:</strong> ${escapeHtml(b.bookedBy)}</span>
+          <span><strong>Audience:</strong> ${escapeHtml(String(b.audienceCount))}</span>
+          <span class="status-pill status-${escapeHtml(b.status)}" style="padding: 2px 8px; font-size: 0.75rem;">
+            ${escapeHtml(b.status)}
+          </span>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  dayZoomModal.classList.remove("hidden");
+}
+
+// Delegate click event on calendar grid to open zoom modal for Admins
+calendarDaysGrid?.addEventListener("click", (event) => {
+  const cell = event.target.closest(".calendar-cell[data-date]");
+  if (!cell) return;
+  const dateKey = cell.dataset.date;
+  if (dateKey && state.currentUser?.role === "admin") {
+    openDayZoom(dateKey);
+  }
+});
+
+// Close modal handlers
+closeDayZoomBtn?.addEventListener("click", closeDayZoom);
+
+dayZoomModal?.addEventListener("click", (event) => {
+  if (event.target === dayZoomModal) closeDayZoom();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && dayZoomModal && !dayZoomModal.classList.contains("hidden")) {
+    closeDayZoom();
+  }
+});
+
+/* =================================================================
+   END OF MODAL CODE
+   ================================================================= */
 
 async function bootstrap() {
   if ("Notification" in window && Notification.permission === "default") {

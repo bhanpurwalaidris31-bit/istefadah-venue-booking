@@ -41,9 +41,8 @@
           visibility: visible !important;
         }
 
-        /* Force report sections to display and break cleanly */
-        #activeBookingsSection, 
-        #historySection {
+        /* Always print Active Bookings */
+        #activeBookingsSection {
           display: block !important;
           visibility: visible !important;
           background: none !important;
@@ -54,16 +53,42 @@
           page-break-inside: avoid !important;
         }
 
-        /* Force HTML5 <details> element (History) to expand natively */
-        #historySection {
-          display: block !important;
-        }
-        #historySection summary {
+        /* IF CLOSED: Hide from print */
+        details#calendarSection:not([open]),
+        details#historySection:not([open]) {
           display: none !important;
         }
-        #historySection > div,
-        #historySection .table-wrap,
-        #historySection table {
+
+        /* IF OPEN: Print Calendar cleanly */
+        details#calendarSection[open] {
+          display: block !important;
+          width: 100% !important;
+          background: none !important;
+          box-shadow: none !important;
+          border: none !important;
+          margin-bottom: 30px !important;
+          page-break-inside: avoid !important;
+        }
+        details#calendarSection summary {
+          display: none !important;
+        }
+
+        /* IF OPEN: Print History cleanly */
+        details#historySection[open] {
+          display: block !important;
+          width: 100% !important;
+          background: none !important;
+          box-shadow: none !important;
+          border: none !important;
+          margin-bottom: 40px !important;
+          page-break-inside: avoid !important;
+        }
+        details#historySection summary {
+          display: none !important;
+        }
+        details#historySection[open] > div,
+        details#historySection[open] .table-wrap,
+        details#historySection[open] table {
           display: table !important;
           visibility: visible !important;
         }
@@ -338,17 +363,19 @@
             <p id="bookingMessage" class="message"></p>
           </section>
 
-          <!-- Modification 11: Calendar View Section -->
-          <section class="card print-report" id="calendarSection">
+          
+          <!-- Modification 11: Calendar View Section (Collapsible like History) -->
+          <details class="card print-report" id="calendarSection" open>
+            <summary>Monthly calendar view</summary>
             <div class="section-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
               <div>
                 <p class="section-tag">Schedule Grid</p>
                 <h2 id="calendarTitle">Monthly Calendar View</h2>
               </div>
               <div style="display: flex; align-items: center; gap: 10px;">
-                <button id="calPrevBtn" class="secondary-btn small-btn">&larr; Prev Month</button>
+                <button type="button" id="calPrevBtn" class="secondary-btn small-btn">&larr; Prev Month</button>
                 <span id="calMonthLabel" style="font-weight: bold; font-size: 1.05rem; min-width: 140px; text-align: center;"></span>
-                <button id="calNextBtn" class="secondary-btn small-btn">Next Month &rarr;</button>
+                <button type="button" id="calNextBtn" class="secondary-btn small-btn">Next Month &rarr;</button>
               </div>
             </div>
             
@@ -358,7 +385,24 @@
               </div>
               <div id="calendarDaysGrid" class="calendar-days-grid"></div>
             </div>
-          </section>
+          </details>
+
+          <!-- Day Zoom Modal (Admin Schedule View) -->
+          <div id="dayZoomModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="dayZoomTitle">
+            <div class="modal-card">
+              <div class="modal-header">
+                <div>
+                  <p class="section-tag">Day Schedule</p>
+                  <h2 id="dayZoomTitle">Bookings for Date</h2>
+                  <div id="dayZoomHijri" class="hijri-arabic" style="font-size: 0.95rem; color: var(--accent-dark); margin-top: 4px;"></div>
+                </div>
+                <button type="button" id="closeDayZoomBtn" class="modal-close-btn" aria-label="Close modal">&times;</button>
+              </div>
+              <div id="dayZoomContent" class="modal-body">
+                <!-- Day bookings inserted dynamically by JS -->
+              </div>
+            </div>
+          </div>
           
 
           <section class="card print-report" id="activeBookingsSection">

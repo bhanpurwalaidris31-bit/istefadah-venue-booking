@@ -810,7 +810,11 @@ th {
     display: none !important;
   }
 
-  #calendarSection {
+  /* Only display when open */
+  details#calendarSection:not([open]) {
+    display: none !important;
+  }
+  details#calendarSection[open] {
     display: block !important;
     width: 100% !important;
     background: none !important;
@@ -877,5 +881,142 @@ th {
   }
   .calendar-cell {
     min-height: auto;
+  }
+}
+
+/* --- Day Zoom Modal & Calendar Cell Interactive Styles --- */
+
+/* Clickable calendar cell styling */
+.calendar-cell.clickable-date {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.calendar-cell.clickable-date:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(15, 107, 90, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Modal backdrop & container */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 45, 38, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeInModal 0.2s ease-out;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+  width: 100%;
+  max-width: 620px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  animation: popModal 0.22s ease-out;
+  overflow: hidden;
+}
+
+@keyframes popModal {
+  from { transform: scale(0.94); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfbf9;
+}
+
+.modal-close-btn {
+  background: #f0ede8;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--muted);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.modal-close-btn:hover {
+  background: var(--danger);
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+.modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.day-zoom-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #faf8f5;
+  border: 1px solid #e7dfd4;
+  border-left: 5px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.day-zoom-item.status-pending {
+  border-left-color: var(--warning);
+  background: #fdfaf2;
+}
+
+.day-zoom-headline {
+  font-size: 1.05rem;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.day-zoom-sub {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.modal-empty-state {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* Hide modal during print operations */
+@media print {
+  #dayZoomModal {
+    display: none !important;
   }
 }
