@@ -509,6 +509,8 @@ th {
   align-items: center;
   gap: 6px;
   border-radius: 0;
+  cursor: pointer;
+  user-select: none;
 }
 
 .sort-header:hover {
@@ -608,8 +610,7 @@ th {
   .export-menu,
   #tableMessage,
   #historyMessage,
-  .table-actions,
-  .sort-header {
+  .table-actions {
     display: none !important;
   }
 

@@ -94,7 +94,7 @@
         }
 
         /* Clean up sorting button headers so column text prints clearly */
-        button.sort-header {
+        .sort-header {
           display: inline-block !important;
           border: none !important;
           background: none !important;
@@ -105,7 +105,7 @@
           color: #000 !important;
           cursor: default !important;
         }
-        button.sort-header span {
+        .sort-header span {
           display: none !important; /* Hide the arrow symbol */
         }
 
@@ -442,12 +442,12 @@
                       <input type="checkbox" id="selectAllPending" style="width: auto; transform: scale(1.15); cursor: pointer;" />
                     </th>
                     <!-- Modification 5: Split columns for clear date & time start-ends -->
-                    <th><button type="button" class="sort-header" data-sort-field="date">From Date <span id="sort-date">↕</span></button></th>
+                    <th><span class="sort-header" data-sort-field="date">From Date <span id="sort-date">↕</span></span></th>
                     <th>To Date</th>
-                    <th><button type="button" class="sort-header" data-sort-field="time">Start Time <span id="sort-time">↕</span></button></th>
+                    <th><span class="sort-header" data-sort-field="time">Start Time <span id="sort-time">↕</span></span></th>
                     <th>End Time</th>
-                    <th><button type="button" class="sort-header" data-sort-field="venue">Venue <span id="sort-venue">↕</span></button></th>
-                    <th><button type="button" class="sort-header" data-sort-field="user">Booked By <span id="sort-user">↕</span></button></th>
+                    <th><span class="sort-header" data-sort-field="venue">Venue <span id="sort-venue">↕</span></span></th>
+                    <th><span class="sort-header" data-sort-field="user">Booked By <span id="sort-user">↕</span></span></th>
                     <th>Purpose</th>
                     <th>Audience</th>
                     <th>Requirements</th>
