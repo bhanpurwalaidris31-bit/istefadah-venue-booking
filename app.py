@@ -947,7 +947,12 @@ class AppHandler(BaseHTTPRequestHandler):
             
             scrubbed_bookings = []
             for b in raw_bookings:
-                if user["role"] == "admin" or b["userId"] == user["id"]:
+                is_owner = (
+                    user["role"] == "admin"
+                    or b["userId"] == user["id"]
+                    or b["bookedBy"].strip().lower() == user["name"].strip().lower()
+                )
+                if is_owner:
                     scrubbed_bookings.append(b)
                 else:
                     # Scrub user-private booking parameters
@@ -1000,7 +1005,13 @@ class AppHandler(BaseHTTPRequestHandler):
             time_slots = [fallback_time_slot] if fallback_time_slot else []
         venue_id = int(payload.get("venueId", 0))
         purpose = payload.get("purpose", "").strip()
-        booked_by = payload.get("bookedBy", "").strip() or user["name"]
+
+        # Regular user is locked to their own name; admin can type any name
+        if user["role"] == "admin":
+            booked_by = payload.get("bookedBy", "").strip() or user["name"]
+        else:
+            booked_by = user["name"]
+
         audience_count = int(payload.get("audienceCount", 0))
         audience_details = payload.get("audienceDetails", "").strip()
         avit_requirements = payload.get("avitRequirements", [])
@@ -1022,6 +1033,17 @@ class AppHandler(BaseHTTPRequestHandler):
 
         with db_connection() as conn:
             update_completed_bookings(conn)
+
+            # If admin enters an existing user's name, link the booking to that user
+            booking_owner_id = user["id"]
+            if user["role"] == "admin" and booked_by:
+                matched_user = conn.execute(
+                    "SELECT id FROM users WHERE LOWER(name) = LOWER(%s) AND is_deleted = 0",
+                    (booked_by,),
+                ).fetchone()
+                if matched_user:
+                    booking_owner_id = matched_user["id"]
+
             venue = conn.execute(
                 "SELECT * FROM venues WHERE id = %s AND is_active = 1",
                 (venue_id,),
@@ -1094,7 +1116,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     """,
                     (
                         booking_code,
-                        user["id"],
+                        booking_owner_id, 
                         venue_id,
                         booking_date,
                         time_slot,
@@ -1657,7 +1679,10 @@ class AppHandler(BaseHTTPRequestHandler):
             
             # Safeguard context exports for standard users
             if user["role"] != "admin":
-                bookings = [b for b in bookings if b["userId"] == user["id"]]
+                bookings = [
+                    b for b in bookings
+                    if b["userId"] == user["id"] or b["bookedBy"].strip().lower() == user["name"].strip().lower()
+                ]
 
         clubbed = club_bookings_py(bookings)
         active_bookings = [b for b in clubbed if b["status"] in ("pending", "approved")]

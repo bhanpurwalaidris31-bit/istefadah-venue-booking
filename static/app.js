@@ -587,8 +587,8 @@ function renderBookings() {
   const isAdmin = state.currentUser && state.currentUser.role === "admin";
 
   if (!isAdmin) {
-    rawActive = rawActive.filter(b => b.userId === state.currentUser.id);
-    rawHistory = rawHistory.filter(b => b.userId === state.currentUser.id);
+    rawActive = rawActive.filter(b => b.userId === state.currentUser.id || b.bookedBy.toLowerCase() === state.currentUser.name.toLowerCase());
+    rawHistory = rawHistory.filter(b => b.userId === state.currentUser.id || b.bookedBy.toLowerCase() === state.currentUser.name.toLowerCase());
   }
 
   if (selectedVenueDetail !== "all") {
@@ -836,6 +836,8 @@ function showApp() {
   appView.classList.remove("hidden");
   welcomeText.textContent = state.currentUser.name;
   bookedByEl.value = state.currentUser.name;
+  // Lock for regular user, unlock for admin
+  bookedByEl.readOnly = state.currentUser.role !== "admin";
   renderSelectedDates();
   renderTimeSlots();
   toggleRestrictedMode();
@@ -880,6 +882,7 @@ function resetBookingForm() {
   editingCodeDisplayEl.textContent = "—";
 
   bookedByEl.value = state.currentUser?.name || "";
+  bookedByEl.readOnly = state.currentUser?.role !== "admin";
   state.selectedTimeSlots = [];
   state.selectedDates = [];
   state.dateMode = "single";
