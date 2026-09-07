@@ -704,8 +704,13 @@ class AppHandler(BaseHTTPRequestHandler):
                 content_type = "image/png"
             elif filename.endswith(".jpg") or filename.endswith(".jpeg"):
                 content_type = "image/jpeg"
+            elif filename.endswith(".ttf"):                 # <--- ADD THIS
+                content_type = "font/ttf"                   # <--- ADD THIS
+            elif filename.endswith(".otf"):                 # <--- ADD THIS (optional)
+                content_type = "font/otf"                   # <--- ADD THIS (optional)
             self.serve_static(filename, content_type)
             return
+            
         if parsed.path == "/api/bootstrap":
             self.handle_bootstrap()
             return

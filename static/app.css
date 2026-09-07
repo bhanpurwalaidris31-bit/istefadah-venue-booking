@@ -1,3 +1,10 @@
+@font-face {
+  font-family: 'Kanz al Marjaan';
+  src: url('/static/kanzalmarjaan.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 :root {
   --bg: #f4efe6;
   --panel: #fffdf8;
