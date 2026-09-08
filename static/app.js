@@ -576,10 +576,12 @@ function renderBookings() {
   const venueFilterEl = document.getElementById("venueDetailFilter");
   const userFilterEl = document.getElementById("userDetailFilter");
   const dateFilterEl = document.getElementById("dateDetailFilter");
+  const statusFilterEl = document.getElementById("statusDetailFilter");
 
   const selectedVenueDetail = venueFilterEl ? venueFilterEl.value : "all";
   const selectedUser = userFilterEl ? userFilterEl.value : "all";
   const selectedDate = dateFilterEl ? dateFilterEl.value : "all";
+  const selectedStatus = statusFilterEl ? statusFilterEl.value : "all";
 
   let rawActive = getActiveBookings();
   let rawHistory = getHistoryBookings();
@@ -616,6 +618,10 @@ function renderBookings() {
       if (b.rawDates) return b.rawDates.includes(selectedDate);
       return b.bookingDate === selectedDate;
     });
+  }
+  
+  if (selectedStatus !== "all") {
+    rawActive = rawActive.filter(b => b.status === selectedStatus);
   }
 
   const activeBookings = sortActiveBookings(clubBookings(rawActive));
@@ -1296,6 +1302,7 @@ document.querySelectorAll("input[name='dateMode']").forEach((input) => {
 document.getElementById("venueDetailFilter")?.addEventListener("change", () => renderBookings());
 document.getElementById("userDetailFilter")?.addEventListener("change", () => renderBookings());
 document.getElementById("dateDetailFilter")?.addEventListener("change", () => renderBookings());
+document.getElementById("statusDetailFilter")?.addEventListener("change", () => renderBookings());
 
 editChangeDateBtn?.addEventListener("click", () => {
   state.selectedDates = [];
