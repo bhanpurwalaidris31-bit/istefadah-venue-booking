@@ -403,6 +403,31 @@
               </div>
             </div>
           </div>
+
+          <!-- Al Jamea Approval Confirmation Modal -->
+          <div id="jameaModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+            <div class="modal-card" style="max-width: 480px; padding: 24px; border-radius: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+               <p class="section-tag" style="margin: 0;">Al Jamea Verification</p>
+               <button type="button" id="jameaCloseXBtn" class="modal-close-btn" style="width: 32px; height: 32px; font-size: 1.2rem;">&times;</button>
+              </div>
+              <h3 style="margin: 0 0 12px; color: var(--accent-dark); font-size: 1.2rem;">Al Jamea Approval Required</h3>
+              <p id="jameaModalText" style="font-size: 0.95rem; line-height: 1.5; color: var(--ink); margin: 0 0 16px;"></p>
+    
+              <!-- Checkbox only shown during Bulk Approval -->
+              <div id="jameaApplyToAllWrap" style="margin-bottom: 20px; background: #fdf6eb; border: 1px solid #fae1be; padding: 12px 14px; border-radius: 12px;">
+               <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: #7a5a0b; font-size: 0.88rem; font-weight: 600;">
+                <input type="checkbox" id="jameaApplyToAll" style="width: auto; transform: scale(1.2); cursor: pointer;" /> 
+                Don't ask again for this bulk approval
+               </label>
+              </div>
+    
+              <div style="display: flex; justify-content: flex-end; gap: 10px;">
+               <button type="button" id="jameaCancelBtn" class="ghost-btn">Skip / Cancel</button>
+               <button type="button" id="jameaConfirmBtn" class="primary-btn">Yes, Approved</button>
+              </div>
+            </div>
+          </div>
           
 
           <section class="card print-report" id="activeBookingsSection">

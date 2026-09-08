@@ -1327,6 +1327,41 @@ document.getElementById("selectAllPending")?.addEventListener("change", (event) 
   updateBulkActionsBar();
 });
 
+function promptJameaApproval(booking, venue, isBulk = false) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("jameaModal");
+    const textEl = document.getElementById("jameaModalText");
+    const bulkWrap = document.getElementById("jameaApplyToAllWrap");
+    const cb = document.getElementById("jameaApplyToAll");
+    const confirmBtn = document.getElementById("jameaConfirmBtn");
+    const cancelBtn = document.getElementById("jameaCancelBtn");
+    const closeXBtn = document.getElementById("jameaCloseXBtn");
+
+    textEl.innerHTML = `Booking Code: <strong>${escapeHtml(booking.bookingCode)}</strong><br />` +
+      `Booked by: <strong>${escapeHtml(booking.bookedBy)}</strong><br />` +
+      `Venue: <strong>${escapeHtml(venue.name)}</strong> (Venue Group: Jamea)<br /><br />` +
+      `Is the approval taken from Al Jamea?`;
+
+    // Only show the "Don't ask again" checkbox if it is a bulk approval
+    bulkWrap.classList.toggle("hidden", !isBulk);
+    if (cb) cb.checked = false;
+
+    modal.classList.remove("hidden");
+
+    function cleanup(confirmed, applyToAll) {
+      modal.classList.add("hidden");
+      confirmBtn.onclick = null;
+      cancelBtn.onclick = null;
+      if (closeXBtn) closeXBtn.onclick = null;
+      resolve({ confirmed, applyToAll });
+    }
+
+    confirmBtn.onclick = () => cleanup(true, cb ? cb.checked : false);
+    cancelBtn.onclick = () => cleanup(false, false);
+    if (closeXBtn) closeXBtn.onclick = () => cleanup(false, false);
+  });
+}
+
 document.getElementById("approveSelectedBtn")?.addEventListener("click", async () => {
   const checkedCbs = document.querySelectorAll(".pending-select-cb:checked");
   if (!checkedCbs.length) return;
@@ -1354,6 +1389,7 @@ document.getElementById("approveSelectedBtn")?.addEventListener("click", async (
   let successCount = 0;
   let failCount = 0;
   let lastError = "";
+  let jameaApprovalTakenForAll = false; // Flag reset per bulk run
 
   for (const bookingId of uniqueBookingIdsToApprove) {
     try {
@@ -1361,13 +1397,15 @@ document.getElementById("approveSelectedBtn")?.addEventListener("click", async (
       if (booking) {
         const venue = state.venues.find(v => v.id === booking.venueId);
         if (venue && venue.details === "Jamea") {
-          const doubleConfirmed = window.confirm(
-            `Booking Code: ${booking.bookingCode} (Booked by: ${booking.bookedBy})\n` +
-            `This venue "${venue.name}" belongs to the Al Jamea group.\n\n` +
-            `Is the approval taken from Al Jamea?`
-          );
-          if (!doubleConfirmed) {
-            continue; 
+          // If the checkbox was not ticked earlier in this batch, prompt:
+          if (!jameaApprovalTakenForAll) {
+            const res = await promptJameaApproval(booking, venue, true);
+            if (!res.confirmed) {
+              continue; // User clicked cancel, skip this booking
+            }
+            if (res.applyToAll) {
+              jameaApprovalTakenForAll = true; // Remember for all remaining bookings in this bulk hit!
+            }
           }
         }
       }
@@ -1516,8 +1554,9 @@ activeBookingTableBody.addEventListener("click", async (event) => {
     if (booking) {
       const venue = state.venues.find(v => v.id === booking.venueId);
       if (venue && venue.details === "Jamea") {
-        const confirmed = window.confirm(`This booking is at "${venue.name}" (Venue Group: Jamea).\n\nIs the approval taken from Al Jamea?`);
-        if (!confirmed) return;
+        // Individual approval: pass isBulk = false so checkbox is hidden and it always asks
+        const res = await promptJameaApproval(booking, venue, false);
+        if (!res.confirmed) return;
       }
     }
 
