@@ -1080,7 +1080,7 @@ body:has(#loginView:not(.hidden)) .app-panel {
 /* 3. Inset Elevated Image Frame */
 .portal-image-frame {
   width: 100%;
-  height: 275px;
+  height: 330px;
   border-radius: 20px;
   overflow: hidden;
   background-color: #172a4a;
@@ -1096,7 +1096,7 @@ body:has(#loginView:not(.hidden)) .app-panel {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center bottom;
+  object-position: center 30%;
   display: block;
 }
 
