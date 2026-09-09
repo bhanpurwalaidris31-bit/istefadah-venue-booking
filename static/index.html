@@ -164,31 +164,41 @@
       </aside>
 
       <main class="app-panel">
-        <section id="loginView" class="card login-card">
-          <div class="section-head">
-            <div>
-              <p class="section-tag">Access</p>
-              <h2>Sign in</h2>
+        <section id="loginView" class="portal-card">
+         <!-- Upper Half: Inset Venue Image Frame -->
+         <div class="portal-image-frame">
+           <img src="/static/org-pic.jpg" alt="Venue" class="portal-image" />
+         </div>
+
+          <!-- Lower Section: Islahul Ilmiya Crest & Credentials -->
+          <div class="portal-body">
+           <!-- Elevated Crest / Logo of Islahul Ilmiya -->
+           <div class="portal-crest-wrap">
+             <img src="/static/logo.png" alt="Islahul Ilmiya" class="portal-crest" onerror="this.style.display='none';" />
+           </div>
+
+           <!-- Credentials Form -->
+           <form id="loginForm" class="portal-form">
+              <div class="portal-field">
+               <label for="email">Username / Organisation Email</label>
+               <input id="email" type="email" placeholder="name@istefadah.org" required autocomplete="username" />
+              </div>
+
+          <div class="portal-field">
+            <label for="password">Password</label>
+            <div class="password-wrapper" style="position: relative; display: block; width: 100%;">
+              <input id="password" type="password" placeholder="Enter password" required autocomplete="current-password" style="padding-right: 42px; width: 100%; box-sizing: border-box;" />
+              <button type="button" class="password-toggle-btn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 5;" aria-label="Toggle Password">
+                <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #78909c; display: block;"><path d="M1 12s4-8 11-8 8 8 8 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #78909c; display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.49 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
             </div>
           </div>
-          <form id="loginForm" class="grid-form">
-            <label>
-              Organisation email
-              <input id="email" type="email" placeholder="name@istefadah.org" required />
-            </label>
-            <label>
-              Password
-              <div class="password-wrapper" style="position: relative; display: block; width: 100%;">
-                <input id="password" type="password" placeholder="Enter password" required style="padding-right: 40px; width: 100%; box-sizing: border-box;" />
-                <button type="button" class="password-toggle-btn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 5;" aria-label="Toggle Password">
-                  <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: block;"><path d="M1 12s4-8 11-8 8 8 8 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  <svg class="eye-off-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #666; display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.49 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                </button>
-              </div>
-            </label>
-            <button type="submit" class="primary-btn">Log in</button>
+
+           <button type="submit" class="portal-btn">Sign in</button>
           </form>
-          <p id="loginMessage" class="message"></p>
+           <p id="loginMessage" class="message" style="text-align: center; margin-top: 14px; font-weight: 600;"></p>
+          </div>
         </section>
 
         <section id="appView" class="hidden">

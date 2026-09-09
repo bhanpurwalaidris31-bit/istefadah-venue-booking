@@ -1028,3 +1028,178 @@ th {
     display: none !important;
   }
 }
+
+/* 1. Background (Only active while on the login screen) */
+body:has(#loginView:not(.hidden)) {
+  background: radial-gradient(circle at 50% 30%, #9cb3d8 0%, #6f87ad 100%) !important;
+  min-height: 100vh;
+}
+
+body:has(#loginView:not(.hidden)) .hero-panel {
+  display: none !important; /* Conceals sidebar only during login to keep card centered */
+}
+
+body:has(#loginView:not(.hidden)) .shell {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 100vh !important;
+  padding: 24px 16px !important;
+}
+
+body:has(#loginView:not(.hidden)) .app-panel {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  width: 100% !important;
+}
+
+/* 2. Main Elevated Card Container */
+.portal-card {
+  width: 100%;
+  max-width: 440px;
+  background-color: #274372; /* Royal Istefadah Navy Blue */
+  border-radius: 28px;
+  /* Deep layered ambient shadow */
+  box-shadow: 
+    0 30px 70px -10px rgba(16, 32, 60, 0.55),
+    0 12px 28px -6px rgba(10, 20, 40, 0.35),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 28px 14px;
+  animation: istefadahFade 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes istefadahFade {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 3. Inset Elevated Image Frame */
+.portal-image-frame {
+  width: 100%;
+  height: 275px;
+  border-radius: 20px;
+  overflow: hidden;
+  background-color: #172a4a;
+  /* Lifts the image frame forward from the blue card */
+  box-shadow: 
+    0 12px 28px rgba(12, 22, 42, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 20px;
+}
+
+.portal-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center bottom;
+  display: block;
+}
+
+/* 4. Lower Section: Body & Crest */
+.portal-body {
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Elevated Crest of Istefadah Ilmiyah */
+.portal-crest-wrap {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.portal-crest {
+  max-height: 85px;
+  width: auto;
+  object-fit: contain;
+  /* Hovering drop shadow */
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.45));
+}
+
+/* 5. Credential Form Fields */
+.portal-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.portal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.portal-field label {
+  color: #e5effc;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.portal-field input {
+  width: 100%;
+  background: #ffffff;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 0.95rem;
+  color: #1a2a46;
+  outline: none;
+  box-sizing: border-box;
+  box-shadow: 
+    inset 0 2px 4px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+
+.portal-field input:focus {
+  border-color: #e6c564;
+  box-shadow: 
+    0 0 0 3.5px rgba(230, 197, 100, 0.35),
+    inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* 6. Tactile 3D Action Button */
+.portal-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px 20px;
+  background: linear-gradient(180deg, #ecd37f 0%, #be9029 100%);
+  color: #172a4c;
+  font-weight: 800;
+  font-size: 1.02rem;
+  letter-spacing: 0.04em;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  /* Directional shadow giving physical elevation */
+  box-shadow: 
+    0 8px 20px rgba(190, 144, 41, 0.45),
+    0 3px 6px rgba(0, 0, 0, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.6);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Lifts slightly on hover */
+.portal-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 12px 26px rgba(190, 144, 41, 0.55),
+    0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Depresses physically on click */
+.portal-btn:active {
+  transform: translateY(2px);
+  box-shadow: 
+    0 4px 10px rgba(190, 144, 41, 0.35),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
